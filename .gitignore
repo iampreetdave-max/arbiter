@@ -1,0 +1,117 @@
+# =============================================================================
+# Arbiter — .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.hypothesis/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.log
+nosetests.xml
+pytest.xml
+
+# -----------------------------------------------------------------------------
+# Node / Next.js
+# -----------------------------------------------------------------------------
+node_modules/
+.next/
+out/
+.vercel/
+.turbo/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+*.tsbuildinfo
+next-env.d.ts
+
+# -----------------------------------------------------------------------------
+# Google Cloud / Firebase credentials
+# -----------------------------------------------------------------------------
+gcloud-service-key.json
+*-service-account.json
+firebase-adminsdk*.json
+application_default_credentials.json
+.gcloud/
+
+# -----------------------------------------------------------------------------
+# Secrets & environment files
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production
+.env.production.local
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# -----------------------------------------------------------------------------
+# OS generated files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.user
+
+# -----------------------------------------------------------------------------
+# NOTE: .claude/ is intentionally NOT ignored.
+# It must be committed so that hooks, settings, and commands work
+# consistently across all machines and contributors.
+# -----------------------------------------------------------------------------

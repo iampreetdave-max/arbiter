@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"C:\\Users\\PREET\\OneDrive\\Desktop\\HACKATHON\\.claude\\hooks\\stop_guard.ps1\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -File \"C:\\Users\\PREET\\OneDrive\\Desktop\\HACKATHON\\.claude\\hooks\\post_write.ps1\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
