@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ────────────────────────────────────────────────────────────────────── */
+:root {
+  --bg-primary:    #000000;
+  --bg-secondary:  #0a0a0a;
+  --bg-tertiary:   #111111;
+  --bg-elevated:   #1a1a1a;
+  --text-primary:  #ffffff;
+  --text-secondary:#a0a0a0;
+  --text-muted:    #555555;
+  --border-default:#222222;
+  --border-hover:  #444444;
+  --border-focus:  #ffffff;
+  --color-success: #22c55e;
+  --color-error:   #ef4444;
+  --color-warning: #f59e0b;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: #000000;
+  color: #ffffff;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ── Dot pattern background ────────────────────────────────────────────────────── */
+.dot-pattern {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Shiny button animation ────────────────────────────────────────────────────────── */
+.btn-shiny {
+  background: linear-gradient(
+    105deg,
+    #ffffff 0%,
+    #ffffff 40%,
+    #d4d4d4 50%,
+    #ffffff 60%,
+    #ffffff 100%
+  );
+  background-size: 200% auto;
+  animation: shine 3s linear infinite;
+}
+
+@keyframes shine {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+/* ── Cursor blink ───────────────────────────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* ── Fade in on scroll ──────────────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+
+/* ── Focus ring override ──────────────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* ── Selection colour ──────────────────────────────────────────────────────────────────────── */
+::selection {
+  background: rgba(255,255,255,0.15);
+  color: #ffffff;
+}
+
+/* ── Mono legal text ────────────────────────────────────────────────────────────────────────── */
+.legal-text {
+  font-family: var(--font-geist-mono), 'Courier New', monospace;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: #a0a0a0;
+}
