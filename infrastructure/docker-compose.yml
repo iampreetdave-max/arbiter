@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────────────────────────
+# Arbiter — Local development docker-compose
+# Usage:
+#   1. Copy arbiter/backend/.env.example → arbiter/backend/.env and fill values
+#   2. Copy arbiter/frontend/.env.local.example → arbiter/frontend/.env.local and fill values
+#   3. docker compose up
+#
+# Frontend:  http://localhost:3000
+# Backend:   http://localhost:8000
+# API Docs:  http://localhost:8000/docs
+# ─────────────────────────────────────────────────────────────────────────────────
+version: '3.9'
+
+services:
+  # ── FastAPI backend ───────────────────────────────────────────────────────────────────────
+backend:
+    build:
+      context: ../arbiter/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../arbiter/backend/.env
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      # Hot reload in dev — mount source
+      - ../arbiter/backend:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ── Next.js frontend ──────────────────────────────────────────────────────────────────────
+frontend:
+    build:
+      context: ../arbiter/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../arbiter/frontend/.env.local
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+
+networks:
+  default:
+    name: arbiter-network

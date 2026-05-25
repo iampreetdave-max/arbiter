@@ -18,13 +18,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.cases import router as cases_router
+from api.chat import router as chat_router
 from api.documents import router as documents_router
 from api.payments import router as payments_router
 from core.config import get_settings
 
 settings = get_settings()
 
-# ── Structured logging setup ────────────────────────────────────────────────────────
+# ── Structured logging setup ─────────────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = structlog.get_logger()
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — startup and shutdown hooks."""
     logger.info("arbiter_starting", environment=settings.environment)
 
+    # Warm up Firebase connection on startup
     try:
         from services.firebase_service import get_firebase_service
         get_firebase_service()
@@ -46,7 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("arbiter_shutdown")
 
 
-# ── FastAPI app ───────────────────────────────────────────────────────────────────
+# ── FastAPI app ──────────────────────────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Arbiter API",
     description="AI-powered legal agent for everyday Indians. XPRIZE Build with Gemini 2026.",
@@ -56,7 +58,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ────────────────────────────────────────────────────────────────────────
+# ── CORS ────────────────────────────────────────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -66,7 +68,7 @@ app.add_middleware(
 )
 
 
-# ── Request timing middleware ────────────────────────────────────────────────────────
+# ── Request timing middleware ─────────────────────────────────────────────────────────────────────────────────────
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
     """Log request duration for every API call."""
@@ -83,7 +85,7 @@ async def add_request_timing(request: Request, call_next):
     return response
 
 
-# ── Global exception handler ────────────────────────────────────────────────────────
+# ── Global exception handler ────────────────────────────────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all exception handler — never expose stack traces in production."""
@@ -96,13 +98,14 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     raise exc
 
 
-# ── Routers ────────────────────────────────────────────────────────────────────────
-app.include_router(cases_router)
-app.include_router(documents_router)
-app.include_router(payments_router)
+# ── Routers ───────────────────────────────────────────────────────────────────────────────────────────────────
+app.include_router(chat_router)       # /cases/chat + /cases/{id}/message
+app.include_router(cases_router)      # /cases CRUD
+app.include_router(documents_router)  # /documents/generate
+app.include_router(payments_router)   # /payments/webhook
 
 
-# ── Health checks (required for Cloud Run + hackathon submission evidence) ────────
+# ── Health checks (required for Cloud Run + hackathon submission evidence) ────
 @app.get("/health", tags=["health"])
 async def health_check() -> dict:
     """Basic health check — Cloud Run uses this to verify the container is alive."""
@@ -171,14 +174,14 @@ async def agents_health() -> dict:
 async def root() -> dict:
     """Root endpoint."""
     return {
-        "service": "Arbiter API",
+        "service": "Arbiter API ⚖️",
         "description": "AI legal agent for everyday Indians",
         "docs": "/docs",
         "health": "/health",
     }
 
 
-# ── Dev runner ───────────────────────────────────────────────────────────────────────
+# ── Dev runner ───────────────────────────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
