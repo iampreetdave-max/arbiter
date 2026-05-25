@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { casesApi, documentsApi, type ChatResponse, type DocumentType } from '@/lib/api'
+import { casesApi, type ChatResponse, type DocumentType } from '@/lib/api'
 import { ChatMessage, TypingIndicator } from '@/components/chat/ChatMessage'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { Spinner } from '@/components/ui/Spinner'
@@ -22,23 +22,28 @@ const WELCOME_MSG: Message = {
 
 /**
  * Intake chat page — /cases/new
- * The user describes their problem through a conversation.
- * Once intake is complete, AI suggests a document type and offers to generate it.
+ *
+ * Flow:
+ *   1. User describes problem → AI asks follow-up questions
+ *   2. Once enough info collected, AI offers to generate document
+ *   3. User clicks "Generate" → SSE stream shows document being written live
+ *   4. When done, redirect to case detail page
  */
 export default function NewCasePage() {
   const router = useRouter()
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MSG])
-  const [thinking, setThinking]             = useState(false)
-  const [caseId, setCaseId]                 = useState<string | null>(null)
+  const [messages, setMessages]     = useState<Message[]>([WELCOME_MSG])
+  const [thinking, setThinking]     = useState(false)
+  const [caseId, setCaseId]         = useState<string | null>(null)
   const [readyToGenerate, setReadyToGenerate] = useState(false)
   const [suggestedDocType, setSuggestedDocType] = useState<DocumentType | null>(null)
-  const [generating, setGenerating]         = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [streamedText, setStreamedText] = useState('')
+  const [generatedDocId, setGeneratedDocId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to latest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, thinking])
+  }, [messages, thinking, streamedText])
 
   const addMessage = (msg: Message) =>
     setMessages((prev) => [...prev, msg])
@@ -56,11 +61,9 @@ export default function NewCasePage() {
       let result: ChatResponse
 
       if (!caseId) {
-        // First message — start a new chat (creates the case)
         result = await casesApi.startChat(text)
         setCaseId(result.case_id)
       } else {
-        // Follow-up message
         result = await casesApi.sendMessage(caseId, text)
       }
 
@@ -77,8 +80,7 @@ export default function NewCasePage() {
     } catch (err: unknown) {
       addMessage({
         role: 'assistant',
-        content:
-          'Sorry, I encountered a technical issue. Please try again in a moment.',
+        content: 'Sorry, I encountered a technical issue. Please try again in a moment.',
         timestamp: new Date().toISOString(),
       })
     } finally {
@@ -87,18 +89,74 @@ export default function NewCasePage() {
   }
 
   const handleGenerate = async () => {
-    if (!caseId || !suggestedDocType) return
+    if (!caseId) return
     setGenerating(true)
+    setStreamedText('')
+
+    const docType: DocumentType = suggestedDocType ?? 'demand_letter'
+
     try {
-      await documentsApi.generate(caseId, suggestedDocType)
-      router.push(`/cases/${caseId}`)
+      // Use SSE streaming so user sees document being written in real time
+      const es = await casesApi.streamGenerate(caseId, docType)
+
+      es.onmessage = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (data.chunk) {
+            setStreamedText((prev) => prev + data.chunk)
+          } else if (data.done) {
+            es.close()
+            setGeneratedDocId(data.document_id)
+            // Small delay so user sees the completed doc before redirect
+            setTimeout(() => {
+              router.push(`/cases/${caseId}`)
+            }, 1200)
+          } else if (data.error) {
+            es.close()
+            addMessage({
+              role: 'assistant',
+              content: `Document generation failed: ${data.error}. Please try again.`,
+              timestamp: new Date().toISOString(),
+            })
+            setGenerating(false)
+            setStreamedText('')
+          }
+        } catch {
+          // Non-JSON chunk, append as-is
+        }
+      }
+
+      es.onerror = () => {
+        es.close()
+        // Fall back to synchronous generation
+        casesApi
+          .generateDocument(caseId, docType)
+          .then((result) => {
+            router.push(`/cases/${caseId}`)
+          })
+          .catch(() => {
+            addMessage({
+              role: 'assistant',
+              content: 'Document generation failed. Please try again.',
+              timestamp: new Date().toISOString(),
+            })
+            setGenerating(false)
+            setStreamedText('')
+          })
+      }
     } catch {
-      setGenerating(false)
-      addMessage({
-        role: 'assistant',
-        content: 'Document generation failed. Please try again.',
-        timestamp: new Date().toISOString(),
-      })
+      // SSE not available — fall back to sync
+      try {
+        await casesApi.generateDocument(caseId, docType)
+        router.push(`/cases/${caseId}`)
+      } catch {
+        addMessage({
+          role: 'assistant',
+          content: 'Document generation failed. Please try again.',
+          timestamp: new Date().toISOString(),
+        })
+        setGenerating(false)
+      }
     }
   }
 
@@ -109,9 +167,7 @@ export default function NewCasePage() {
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-white font-semibold text-base">New Case</h1>
-            <p className="text-[#444] text-xs mt-0.5">
-              Powered by Google Gemini AI
-            </p>
+            <p className="text-[#444] text-xs mt-0.5">Powered by Google Gemini AI</p>
           </div>
           {caseId && (
             <span className="text-[10px] font-mono text-[#333] bg-[#0a0a0a] border border-[#111] px-2 py-1 rounded">
@@ -121,7 +177,7 @@ export default function NewCasePage() {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages + streamed document */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-5">
           {messages.map((msg, i) => (
@@ -154,12 +210,26 @@ export default function NewCasePage() {
             </div>
           )}
 
+          {/* Live streaming document preview */}
           {generating && (
-            <div className="mx-auto text-center py-6">
-              <Spinner size="lg" label="Generating your document…" />
-              <p className="text-[#444] text-sm mt-3">
-                Researching Indian law and drafting your document…
-              </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Spinner size="sm" />
+                <span className="text-xs text-[#444]">
+                  {streamedText ? 'Writing document…' : 'Researching Indian law…'}
+                </span>
+              </div>
+              {streamedText && (
+                <div className="bg-[#040404] border border-[#111] rounded-xl p-4 text-xs text-[#666] whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto font-mono">
+                  {streamedText}
+                  <span className="animate-pulse ml-0.5">▋</span>
+                </div>
+              )}
+              {generatedDocId && (
+                <p className="text-xs text-emerald-400 text-center">
+                  ✓ Document saved — redirecting…
+                </p>
+              )}
             </div>
           )}
 

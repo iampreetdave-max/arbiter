@@ -7,7 +7,7 @@ import { auth } from './firebase'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-// ── Error class ───────────────────────────────────────────────────────────────────────────
+// ── Error class ──────────────────────────────────────────────────────────────────
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -15,7 +15,7 @@ export class ApiError extends Error {
   }
 }
 
-// ── Core fetch wrapper ────────────────────────────────────────────────────────────────────
+// ── Core fetch wrapper ───────────────────────────────────────────────────────────
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : null
   const res = await fetch(`${BASE}${path}`, {
@@ -33,7 +33,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ── Domain types ───────────────────────────────────────────────────────────────────────
+// ── Domain types ───────────────────────────────────────────────────────────────
 export type ProblemType =
   | 'tenant_dispute'
   | 'employment'
@@ -47,41 +47,74 @@ export type CaseStatus =
   | 'research'
   | 'drafting'
   | 'draft_ready'
+  | 'complete'
   | 'paid'
+  | 'tracking'
   | 'closed'
+
+export type CaseOutcome =
+  | 'pending'
+  | 'resolved'
+  | 'partial'
+  | 'escalated'
+  | 'no_response'
 
 export type DocumentType =
   | 'demand_letter'
   | 'legal_notice'
   | 'rti_application'
   | 'consumer_complaint'
-  | 'cease_and_desist'
+  | 'cease_desist'
   | 'employment_complaint'
+
+export interface GroundingSource {
+  title: string
+  url: string
+}
 
 export interface ArbiterCase {
   id: string
   user_id: string
   problem_type: ProblemType
-  title: string
-  description: string
+  title?: string
+  description?: string
   status: CaseStatus
   jurisdiction?: string
-  facts?: string
-  opposing_party?: string
-  relief_sought?: string
+  intake_complete?: boolean
+  outcome?: CaseOutcome
+  outcome_notes?: string
   created_at: string
-  updated_at: string
+  updated_at?: string
+  next_message?: string
+}
+
+export interface Citation {
+  act: string
+  section: string
+  description: string
+  verified: boolean
+  source_url?: string
 }
 
 export interface ArbiterDocument {
   id: string
   case_id: string
-  document_type: DocumentType
-  content: string
-  pdf_url?: string
-  word_count?: number
-  citations?: string[]
-  created_at: string
+  type: DocumentType
+  title: string
+  content?: string          // null if not paid
+  preview?: string          // first 300 chars
+  citations: Citation[]
+  disclaimer: string
+  payment_status: 'pending' | 'paid' | 'failed' | 'refunded'
+  gcs_url?: string
+  created_at?: string
+  amount_paise: number
+  // Confidence & grounding
+  confidence_score: number
+  grounding_sources: string[]
+  verified_citations: number
+  revision_count: number
+  language: string
 }
 
 export interface ChatResponse {
@@ -94,26 +127,19 @@ export interface ChatResponse {
 
 export interface PaymentOrder {
   order_id: string
-  amount: number       // in paise
+  amount_paise: number
   currency: string
-  case_id: string
+  razorpay_key_id: string
+  document_id: string
 }
 
-// ── Cases API ─────────────────────────────────────────────────────────────────────────
+// ── Cases API ──────────────────────────────────────────────────────────────────
 export const casesApi = {
   /** List all cases for the authenticated user. */
-  list: () => req<ArbiterCase[]>('/cases'),
+  list: () => req<{ cases: ArbiterCase[]; total: number }>('/api/cases/'),
 
   /** Fetch a single case by ID. */
-  get: (id: string) => req<ArbiterCase>(`/cases/${id}`),
-
-  /** Create a case from the intake form (non-chat path). */
-  create: (data: {
-    problem_type: ProblemType
-    title: string
-    description: string
-    jurisdiction?: string
-  }) => req<ArbiterCase>('/cases', { method: 'POST', body: JSON.stringify(data) }),
+  get: (id: string) => req<ArbiterCase>(`/api/cases/${id}`),
 
   /** Start an intake chat — creates a case and returns the AI's first response. */
   startChat: (message: string) =>
@@ -128,31 +154,108 @@ export const casesApi = {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
+
+  /** Trigger synchronous document generation for a case. */
+  generateDocument: (caseId: string, documentType: DocumentType = 'demand_letter') =>
+    req<{ document_id: string; case_id: string; status: string }>(
+      `/api/cases/${caseId}/generate`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ document_type: documentType }),
+      },
+    ),
+
+  /**
+   * Record the outcome of a case (what happened after sending the document).
+   * Returns the updated case.
+   */
+  updateOutcome: (
+    caseId: string,
+    outcome: CaseOutcome,
+    outcomeNotes?: string,
+  ) =>
+    req<ArbiterCase>(`/api/cases/${caseId}/outcome`, {
+      method: 'PATCH',
+      body: JSON.stringify({ outcome, outcome_notes: outcomeNotes }),
+    }),
+
+  /**
+   * Open an SSE stream to watch document generation in real time.
+   * Returns an EventSource. The caller must add onmessage + onerror handlers.
+   *
+   * Message format:
+   *   { chunk: string }          → append to document draft
+   *   { done: true, document_id: string } → generation complete
+   *   { error: string }          → generation failed
+   */
+  streamGenerate: async (
+    caseId: string,
+    documentType: DocumentType = 'demand_letter',
+  ): Promise<EventSource> => {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : ''
+    // EventSource doesn't support custom headers; pass token as query param
+    const url = `${BASE}/api/cases/${caseId}/generate/stream?document_type=${documentType}&token=${token}`
+    return new EventSource(url)
+  },
 }
 
-// ── Documents API ─────────────────────────────────────────────────────────────────────
+// ── Documents API ─────────────────────────────────────────────────────────────────
 export const documentsApi = {
-  /** Trigger AI document generation for a case. */
-  generate: (caseId: string, documentType: DocumentType) =>
-    req<ArbiterDocument>('/documents/generate', {
+  /** Fetch a document by ID. */
+  get: (id: string) => req<ArbiterDocument>(`/api/documents/${id}`),
+
+  /** Fetch all documents for a case (uses cases list endpoint). */
+  getByCaseId: async (caseId: string): Promise<ArbiterDocument[]> => {
+    // The backend doesn't have a filter endpoint yet — fetch case and use doc ID
+    // This will be enhanced once document list endpoint exists
+    return []
+  },
+
+  /**
+   * Revise a paid document with natural language instructions.
+   * Example: "Make the tone more assertive"
+   * Returns the updated document (max 3 revisions per document).
+   */
+  revise: (documentId: string, instructions: string) =>
+    req<ArbiterDocument>(`/api/documents/${documentId}/revise`, {
       method: 'POST',
-      body: JSON.stringify({ case_id: caseId, document_type: documentType }),
+      body: JSON.stringify({ instructions }),
     }),
 
-  /** Fetch a document by ID. */
-  get: (id: string) => req<ArbiterDocument>(`/documents/${id}`),
+  /** Create a Razorpay payment order for a document. */
+  createOrder: (documentId: string) =>
+    req<PaymentOrder>(`/api/documents/${documentId}/create-order`, {
+      method: 'POST',
+    }),
 
-  /** Fetch all documents for a case. */
-  getByCaseId: (caseId: string) =>
-    req<ArbiterDocument[]>(`/documents?case_id=${caseId}`),
+  /** Verify payment after Razorpay checkout. */
+  verifyPayment: (
+    documentId: string,
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string,
+  ) =>
+    req<{ status: string; document_id: string }>(
+      `/api/documents/${documentId}/verify-payment`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          razorpay_order_id: razorpayOrderId,
+          razorpay_payment_id: razorpayPaymentId,
+          razorpay_signature: razorpaySignature,
+        }),
+      },
+    ),
+
+  /** Get signed GCS download URL (paid only). */
+  getDownloadUrl: (documentId: string) =>
+    req<{ download_url: string; expires_in_minutes: number }>(
+      `/api/documents/${documentId}/download-url`,
+    ),
 }
 
-// ── Payments API ──────────────────────────────────────────────────────────────────────
+// ── Payments API (legacy — kept for compatibility) ────────────────────────────────
 export const paymentsApi = {
-  /** Create a Razorpay order for a case. Returns order details for checkout. */
-  createOrder: (caseId: string) =>
-    req<PaymentOrder>('/payments/order', {
-      method: 'POST',
-      body: JSON.stringify({ case_id: caseId }),
-    }),
+  /** Create a Razorpay order for a document. */
+  createOrder: (documentId: string) => documentsApi.createOrder(documentId),
 }
