@@ -1,5 +1,5 @@
 """
-documents.py — FastAPI routes for legal document access and payments.
+documents.py — FastAPI routes for legal document access, revisions, and payments.
 """
 from __future__ import annotations
 
@@ -9,7 +9,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from core.security import CurrentUser
-from models.document import DocumentResponse, PaymentOrderRequest, PaymentOrderResponse, PaymentStatus
+from models.document import (
+    DocumentResponse,
+    DocumentReviseRequest,
+    PaymentOrderRequest,
+    PaymentOrderResponse,
+    PaymentStatus,
+)
 from services.firebase_service import FirebaseService, get_firebase_service
 from services.razorpay_service import RazorpayService, get_razorpay_service
 from services.storage_service import StorageService, get_storage_service
@@ -28,6 +34,8 @@ async def get_document(
     Get a legal document.
 
     Returns full content if paid, preview only if pending payment.
+    Includes confidence_score, verified_citations, and grounding_sources
+    so the frontend can display the accuracy badge.
     """
     doc = firebase.get_document(document_id)
     _assert_doc_access(doc, document_id, user.uid)
@@ -70,6 +78,79 @@ async def get_download_url(
     return {"download_url": signed_url, "expires_in_minutes": 60}
 
 
+@router.post("/{document_id}/revise", response_model=DocumentResponse)
+async def revise_document(
+    document_id: str,
+    body: DocumentReviseRequest,
+    user: CurrentUser,
+    firebase: Annotated[FirebaseService, Depends(get_firebase_service)],
+) -> DocumentResponse:
+    """
+    Revise an existing legal document based on user instructions.
+
+    The user can request changes like:
+    - "Make the tone more assertive"
+    - "Increase the compensation demand to ₹75,000"
+    - "Add a paragraph about the mental harassment suffered"
+    - "Translate the document to Hindi"
+
+    Each revision increments revision_count.
+    Only available on paid documents.
+    """
+    from agents.drafting_agent import get_drafting_agent
+
+    doc = firebase.get_document(document_id)
+    _assert_doc_access(doc, document_id, user.uid)
+
+    if doc.get("payment_status") != PaymentStatus.PAID.value:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Pay for the document first before requesting revisions.",
+        )
+
+    current_content = doc.get("content", "")
+    if not current_content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document content not available for revision.",
+        )
+
+    revision_count = doc.get("revision_count", 0)
+    if revision_count >= 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Maximum 3 revisions allowed per document. Contact support for additional changes.",
+        )
+
+    drafting_agent = get_drafting_agent()
+    revised_content = await drafting_agent.revise(
+        original_content=current_content,
+        instructions=body.instructions,
+        revision_count=revision_count,
+    )
+
+    new_revision_count = revision_count + 1
+    firebase.update_document(
+        document_id,
+        {
+            "content": revised_content,
+            "revision_count": new_revision_count,
+        },
+    )
+
+    logger.info(
+        "document_revised",
+        extra={
+            "doc_id": document_id,
+            "revision": new_revision_count,
+            "instructions_preview": body.instructions[:60],
+        },
+    )
+
+    refreshed = firebase.get_document(document_id)
+    return _raw_to_doc_response(refreshed)
+
+
 @router.post("/{document_id}/create-order", response_model=PaymentOrderResponse)
 async def create_payment_order(
     document_id: str,
@@ -77,11 +158,7 @@ async def create_payment_order(
     firebase: Annotated[FirebaseService, Depends(get_firebase_service)],
     razorpay: Annotated[RazorpayService, Depends(get_razorpay_service)],
 ) -> PaymentOrderResponse:
-    """
-    Create a Razorpay payment order for a document.
-
-    Returns order details needed by the Razorpay checkout widget.
-    """
+    """Create a Razorpay payment order for a document."""
     from core.config import get_settings
     settings = get_settings()
 
@@ -120,11 +197,7 @@ async def verify_payment(
     firebase: Annotated[FirebaseService, Depends(get_firebase_service)],
     razorpay: Annotated[RazorpayService, Depends(get_razorpay_service)],
 ) -> dict:
-    """
-    Verify Razorpay payment signature after checkout completes.
-
-    Call this from the frontend after successful payment to unlock the document.
-    """
+    """Verify Razorpay payment signature after checkout completes."""
     doc = firebase.get_document(document_id)
     _assert_doc_access(doc, document_id, user.uid)
 
@@ -161,7 +234,6 @@ async def verify_payment(
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _assert_doc_access(doc: dict | None, doc_id: str, user_id: str) -> None:
-    """Raise 404/403 if document doesn't exist or doesn't belong to user."""
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     if doc.get("user_id") != user_id:
@@ -169,7 +241,6 @@ def _assert_doc_access(doc: dict | None, doc_id: str, user_id: str) -> None:
 
 
 def _raw_to_doc_response(raw: dict) -> DocumentResponse:
-    """Convert raw Firestore dict to DocumentResponse."""
     from models.document import Citation, LEGAL_DISCLAIMER
     payment_status = PaymentStatus(raw.get("payment_status", PaymentStatus.PENDING.value))
     content = raw.get("content", "")
@@ -188,4 +259,9 @@ def _raw_to_doc_response(raw: dict) -> DocumentResponse:
         gcs_url=raw.get("gcs_url"),
         created_at=raw.get("created_at"),
         amount_paise=raw.get("amount_paise", 29900),
+        confidence_score=raw.get("confidence_score", 0.0),
+        grounding_sources=raw.get("grounding_sources", []),
+        verified_citations=raw.get("verified_citations", 0),
+        revision_count=raw.get("revision_count", 0),
+        language=raw.get("language", "en"),
     )
