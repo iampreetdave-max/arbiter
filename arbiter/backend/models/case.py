@@ -28,7 +28,7 @@ class CaseStatus(str, Enum):
 class CaseOutcome(str, Enum):
     """What happened after the user sent their document."""
     PENDING = "pending"             # Document sent, waiting for response
-    RESOLVED = "resolved"           # Issue resolved in user's favour ✓
+    RESOLVED = "resolved"           # Issue resolved in user's favour
     PARTIAL = "partial"             # Partial resolution
     ESCALATED = "escalated"         # Had to escalate to court/authority
     NO_RESPONSE = "no_response"     # Opposing party didn't respond
@@ -115,10 +115,9 @@ class ResearchData(BaseModel):
         default=None,
         description="e.g. 'District Consumer Commission, Delhi'",
     )
-    # ── Grounding & confidence ──────────────────────────────────────────────
     confidence_score: float = Field(
         default=0.0,
-        description="0–100 confidence based on verified grounding sources",
+        description="0-100 confidence based on verified grounding sources",
     )
     grounding_sources: list[GroundingSource] = Field(
         default_factory=list,
@@ -133,15 +132,13 @@ class ConversationMessage(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ── API Request/Response Models ────────────────────────────────────────────────
-
 class CaseCreate(BaseModel):
     """Request body to start a new case."""
     initial_message: str = Field(
         ...,
         min_length=10,
         description="User's description of their legal problem",
-        examples=["My landlord is refusing to return my ₹50,000 security deposit after I vacated the flat 2 months ago."]
+        examples=["My landlord is refusing to return my security deposit after I vacated the flat 2 months ago."]
     )
     country_code: Optional[str] = Field(
         default=None,
