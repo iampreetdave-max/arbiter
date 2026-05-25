@@ -1,18 +1,13 @@
 """
-main.py — Arbiter FastAPI application entry point.
+main.py — Arbiter FastAPI application entry point v2.0.
 
-Starts the web server, registers all routers, configures middleware,
-and sets up health check endpoints for Google Cloud Run.
-
-Production additions (Session 5):
-  - Sentry crash alerting (init on startup)
-  - Request ID middleware (UUID per request)
-  - Security headers middleware (OWASP)
-  - Suspicious request middleware (blocks SQLi, XSS, prompt injection)
-  - Rate limiting via slowapi (60/min, 500/day defaults)
-  - Admin router (/api/admin)
-  - Compliance health endpoint (/health/compliance)
-  - Readiness probe (/health/ready)
+Session 7 additions:
+  - Multi-country support (IN, US, GB, CA, AU)
+  - Lawyer registration + matching system
+  - Legal updates feed (weekly refresh)
+  - Public case showcase
+  - Content refresh admin endpoints
+  - /health/countries endpoint
 """
 from __future__ import annotations
 
@@ -32,6 +27,11 @@ from api.chat import router as chat_router
 from api.documents import router as documents_router
 from api.payments import router as payments_router
 from api.admin import router as admin_router
+from api.lawyers import router as lawyers_router
+from api.lawyers import escalate_router
+from api.legal_updates import router as legal_updates_router
+from api.public_cases import router as public_cases_router
+from api.content_refresh import router as content_refresh_router
 from core.config import get_settings
 from core.middleware import (
     RequestIDMiddleware,
@@ -42,17 +42,14 @@ from core.middleware import (
 
 settings = get_settings()
 
-# ── Structured logging setup ──────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 logger = structlog.get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan — startup and shutdown hooks."""
     logger.info("arbiter_starting", environment=settings.environment)
 
-    # ── Sentry crash alerting ──────────────────────────────────────────────────────
     if settings.sentry_dsn:
         try:
             from core.sentry import init_sentry
@@ -63,7 +60,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("sentry_disabled", reason="SENTRY_DSN not set")
 
-    # ── Firebase warm-up ─────────────────────────────────────────────────────────────
     try:
         from services.firebase_service import get_firebase_service
         get_firebase_service()
@@ -76,25 +72,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("arbiter_shutdown")
 
 
-# ── FastAPI app ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="Arbiter API",
-    description="AI-powered legal agent for everyday Indians. XPRIZE Build with Gemini 2026.",
-    version="1.0.0",
+    description="AI-powered legal agent for everyday people. XPRIZE Build with Gemini 2026. Supports India, US, UK, Canada, Australia.",
+    version="2.0.0",
     docs_url="/docs" if not settings.is_production else None,
     redoc_url="/redoc" if not settings.is_production else None,
     lifespan=lifespan,
 )
 
-# ── Rate limiting ───────────────────────────────────────────────────────────────────────
 setup_rate_limiting(app)
 
-# ── Middleware stack (outermost first — order matters) ────────────────────────────────────
-app.add_middleware(RequestIDMiddleware)          # 1. Attach request ID (first so all logs carry it)
-app.add_middleware(SecurityHeadersMiddleware)    # 2. OWASP security headers
-app.add_middleware(SuspiciousRequestMiddleware)  # 3. Block SQLi / XSS / prompt injection
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SuspiciousRequestMiddleware)
 
-# ── CORS ────────────────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -104,15 +96,11 @@ app.add_middleware(
 )
 
 
-# ── Request timing middleware ─────────────────────────────────────────────────────────────────
 @app.middleware("http")
 async def add_request_timing(request: Request, call_next):
-    """Log request duration for every API call."""
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start) * 1000
-
-    # Include request ID in log if available
     request_id = getattr(request.state, "request_id", "-")
     logger.info(
         "request",
@@ -122,30 +110,22 @@ async def add_request_timing(request: Request, call_next):
         duration_ms=round(duration_ms, 2),
         request_id=request_id,
     )
-
-    # Track latency in metrics buffer for admin dashboard
     try:
         from core.monitoring import metrics_buffer
         metrics_buffer.record_latency(request.url.path, duration_ms)
     except Exception:
-        pass  # Never let monitoring crash the request
-
+        pass
     return response
 
 
-# ── Global exception handler ──────────────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Catch-all exception handler — never expose stack traces in production."""
     logger.error("unhandled_exception", path=request.url.path, error=str(exc))
-
-    # Forward to Sentry if configured
     try:
         from core.sentry import capture_exception
         capture_exception(exc, context={"path": request.url.path, "method": request.method})
     except Exception:
         pass
-
     if settings.is_production:
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -154,116 +134,71 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     raise exc
 
 
-# ── Routers ───────────────────────────────────────────────────────────────────────────
-app.include_router(chat_router)       # /cases/chat + /cases/{id}/message
-app.include_router(cases_router)      # /cases CRUD
-app.include_router(documents_router)  # /documents/generate
-app.include_router(payments_router)   # /payments/webhook
-app.include_router(admin_router)      # /api/admin (X-Admin-Key protected)
+app.include_router(chat_router)
+app.include_router(cases_router)
+app.include_router(documents_router)
+app.include_router(payments_router)
+app.include_router(admin_router)
+app.include_router(lawyers_router)
+app.include_router(escalate_router)
+app.include_router(legal_updates_router)
+app.include_router(public_cases_router)
+app.include_router(content_refresh_router)
 
 
-# ── Health checks (required for Cloud Run + hackathon submission evidence) ────
 @app.get("/health", tags=["health"])
 async def health_check() -> dict:
-    """Basic health check — Cloud Run uses this to verify the container is alive."""
     return {
         "status": "healthy",
         "service": "arbiter-api",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "environment": settings.environment,
+        "supported_countries": ["IN", "US", "GB", "CA", "AU"],
     }
 
 
 @app.get("/health/ready", tags=["health"])
 async def readiness_check() -> dict:
-    """
-    Readiness probe — verifies critical dependencies are available.
-
-    Cloud Run uses this to decide when to send traffic.
-    Returns 503 if any critical service is unavailable.
-    """
     checks: dict[str, str] = {}
     all_ready = True
-
-    # Firebase
     try:
         from services.firebase_service import get_firebase_service
-        fb = get_firebase_service()
-        # Quick connectivity test — just instantiate (connection is lazy in firebase-admin)
+        get_firebase_service()
         checks["firebase"] = "ok"
     except Exception as exc:
         checks["firebase"] = f"error: {exc}"
         all_ready = False
-
-    # Gemini API key present
     if settings.gemini_api_key:
         checks["gemini_api_key"] = "ok"
     else:
         checks["gemini_api_key"] = "missing"
         all_ready = False
-
-    # Razorpay credentials present
     if settings.razorpay_key_id and settings.razorpay_key_secret:
         checks["razorpay"] = "ok"
     else:
         checks["razorpay"] = "missing credentials"
         all_ready = False
-
     status_code = status.HTTP_200_OK if all_ready else status.HTTP_503_SERVICE_UNAVAILABLE
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "ready": all_ready,
-            "checks": checks,
-        },
-    )
+    return JSONResponse(status_code=status_code, content={"ready": all_ready, "checks": checks})
 
 
 @app.get("/health/agents", tags=["health"])
 async def agents_health() -> dict:
-    """
-    Agent system health check.
-
-    Verifies Gemini API is reachable and agents can be instantiated.
-    Included in hackathon submission as evidence of live AI operation.
-    """
     checks: dict[str, str] = {}
-
-    try:
-        from agents.intake_agent import get_intake_agent
-        get_intake_agent()
-        checks["intake_agent"] = "ok"
-    except Exception as exc:
-        checks["intake_agent"] = f"error: {exc}"
-
-    try:
-        from agents.research_agent import get_research_agent
-        get_research_agent()
-        checks["research_agent"] = "ok"
-    except Exception as exc:
-        checks["research_agent"] = f"error: {exc}"
-
-    try:
-        from agents.drafting_agent import get_drafting_agent
-        get_drafting_agent()
-        checks["drafting_agent"] = "ok"
-    except Exception as exc:
-        checks["drafting_agent"] = f"error: {exc}"
-
-    try:
-        from agents.tracking_agent import get_tracking_agent
-        get_tracking_agent()
-        checks["tracking_agent"] = "ok"
-    except Exception as exc:
-        checks["tracking_agent"] = f"error: {exc}"
-
-    try:
-        from services.gemini_service import get_gemini_service
-        get_gemini_service()
-        checks["gemini_service"] = "ok"
-    except Exception as exc:
-        checks["gemini_service"] = f"error: {exc}"
-
+    for agent_name, import_path in [
+        ("intake_agent",   ("agents.intake_agent",   "get_intake_agent")),
+        ("research_agent", ("agents.research_agent",  "get_research_agent")),
+        ("drafting_agent", ("agents.drafting_agent",  "get_drafting_agent")),
+        ("tracking_agent", ("agents.tracking_agent",  "get_tracking_agent")),
+        ("gemini_service", ("services.gemini_service","get_gemini_service")),
+    ]:
+        try:
+            import importlib
+            mod = importlib.import_module(import_path[0])
+            getattr(mod, import_path[1])()
+            checks[agent_name] = "ok"
+        except Exception as exc:
+            checks[agent_name] = f"error: {exc}"
     all_ok = all(v == "ok" for v in checks.values())
     return {
         "status": "healthy" if all_ok else "degraded",
@@ -274,36 +209,35 @@ async def agents_health() -> dict:
 
 @app.get("/health/compliance", tags=["health"])
 async def compliance_check() -> dict:
-    """
-    Legal and regulatory compliance status.
-
-    Exposes compliance metadata for: IT Act 2000, DPDP Act 2023,
-    Bar Council Rules, Consumer Protection Act 2019.
-    Useful for hackathon judges reviewing our governance posture.
-    """
     try:
         from core.compliance import get_compliance_metadata
         return get_compliance_metadata()
     except Exception as exc:
-        logger.error("compliance_check_failed", error=str(exc))
         return {"status": "error", "detail": str(exc)}
+
+
+@app.get("/health/countries", tags=["health"])
+async def countries_health() -> dict:
+    from core.countries import get_supported_country_list
+    return {
+        "supported_countries": get_supported_country_list(),
+        "default_country": "IN",
+        "total": 5,
+    }
 
 
 @app.get("/", tags=["root"])
 async def root() -> dict:
-    """Root endpoint."""
     return {
-        "service": "Arbiter API ⚖️",
-        "description": "AI legal agent for everyday Indians",
+        "service": "Arbiter API",
+        "description": "AI legal agent for everyday people — India, US, UK, Canada, Australia",
+        "version": "2.0.0",
         "docs": "/docs",
         "health": "/health",
-        "health_ready": "/health/ready",
-        "health_agents": "/health/agents",
-        "health_compliance": "/health/compliance",
+        "supported_countries": ["🇮🇳 India", "🇺🇸 United States", "🇬🇧 United Kingdom", "🇨🇦 Canada", "🇦🇺 Australia"],
     }
 
 
-# ── Dev runner ───────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

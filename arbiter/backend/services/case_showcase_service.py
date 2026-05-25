@@ -3,36 +3,21 @@ case_showcase_service.py — Curates interesting public legal cases by country.
 
 Educational content: famous/interesting public cases that teach citizens about their rights.
 Uses Gemini + grounding to find noteworthy cases. Refreshed weekly.
-
-Showcase case structure:
-  {
-    "country_code": "IN",
-    "title": "...",
-    "parties": "Plaintiff vs Defendant",
-    "court": "...",
-    "year": 2024,
-    "category": "consumer | employment | tenant | civil_rights | landmark",
-    "summary": "What happened and what was the outcome",
-    "legal_lesson": "Key legal principle this case established or reinforced",
-    "citizen_impact": "How this case protects/affects ordinary people",
-    "is_landmark": bool,
-    "source_hint": "...",
-    "fetched_at": "...",
-  }
 """
+# Arbiter - Powered by Google Gemini 2.0 Pro - XPRIZE Build with Gemini
 from __future__ import annotations
 
 import json
 import re
 import structlog
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Any
 
 logger = structlog.get_logger()
 
-_SHOWCASE_PROMPT = """You are a legal educator. Find 3–5 interesting, newsworthy, or landmark public legal cases from {country_name} that are:
-- From the past 2 years (2024–2026) OR landmark cases from history that are widely discussed today
-- Educational — they teach ordinary people about their legal rights
+_SHOWCASE_PROMPT = """You are a legal educator. Find 3-5 interesting, newsworthy, or landmark public legal cases from {country_name} that are:
+- From the past 2 years (2024-2026) OR landmark cases from history that are widely discussed today
+- Educational - they teach ordinary people about their legal rights
 - Publicly reported cases (not private matters)
 
 For each case, provide EXACTLY this JSON structure (return an array):
@@ -43,7 +28,7 @@ For each case, provide EXACTLY this JSON structure (return an array):
     "court": "Court or tribunal name",
     "year": 2025,
     "category": "consumer" | "employment" | "tenant" | "civil_rights" | "landmark" | "cyber" | "corporate",
-    "summary": "3–4 sentences: what happened, what was decided, what remedies were ordered",
+    "summary": "3-4 sentences: what happened, what was decided, what remedies were ordered",
     "legal_lesson": "The key legal principle or right this case demonstrates",
     "citizen_impact": "How knowing about this case helps ordinary people assert their rights",
     "is_landmark": true or false,
@@ -55,7 +40,6 @@ CRITICAL:
 - Only include REAL cases that are publicly documented
 - Include at least 1 landmark/famous case that citizens should know about
 - Focus on cases that empower ordinary people (consumers, employees, tenants)
-- Do NOT include purely criminal cases unless they relate to citizen rights
 
 Return ONLY the JSON array. No explanation."""
 
@@ -65,7 +49,6 @@ async def fetch_showcase_cases_for_country(
     country_name: str,
     gemini_service,
 ) -> list[dict[str, Any]]:
-    """Fetch interesting public cases for a country using Gemini + grounding."""
     prompt = _SHOWCASE_PROMPT.format(country_name=country_name)
 
     try:
@@ -101,7 +84,6 @@ async def fetch_showcase_cases_for_country(
                 "is_active": True,
             })
 
-        logger.info("showcase_cases_fetched", country=country_code, count=len(processed))
         return processed
 
     except Exception as exc:
@@ -110,17 +92,13 @@ async def fetch_showcase_cases_for_country(
 
 
 class CaseShowcaseService:
-    """Manages public case showcase fetching and retrieval."""
-
     def __init__(self, firebase_service, gemini_service):
         self._fb = firebase_service
         self._gemini = gemini_service
 
     async def refresh_all_countries(self) -> dict[str, int]:
-        """Refresh showcase cases for all supported countries."""
         from core.countries import SUPPORTED_COUNTRIES
         results: dict[str, int] = {}
-
         for code, data in SUPPORTED_COUNTRIES.items():
             cases = await fetch_showcase_cases_for_country(
                 country_code=code,
@@ -131,24 +109,15 @@ class CaseShowcaseService:
                 doc_ref = self._fb.db.collection("public_cases").document()
                 doc_ref.set(case)
             results[code] = len(cases)
-
         return results
 
-    def get_cases(
-        self,
-        country_code: str | None = None,
-        category: str | None = None,
-        landmark_only: bool = False,
-        limit: int = 12,
-    ) -> list[dict]:
-        """Get public showcase cases."""
+    def get_cases(self, country_code: str | None = None, category: str | None = None, landmark_only: bool = False, limit: int = 12) -> list[dict]:
         try:
             query = self._fb.db.collection("public_cases").where("is_active", "==", True)
             if country_code:
                 query = query.where("country_code", "==", country_code.upper())
             if landmark_only:
                 query = query.where("is_landmark", "==", True)
-
             docs = query.order_by("fetched_at", direction="DESCENDING").limit(limit).stream()
             results = []
             for doc in docs:
@@ -163,14 +132,13 @@ class CaseShowcaseService:
             return []
 
     def increment_view(self, case_id: str) -> None:
-        """Increment the view count for a case."""
         try:
             from google.cloud.firestore import Increment
             self._fb.db.collection("public_cases").document(case_id).update(
                 {"view_count": Increment(1)}
             )
         except Exception:
-            pass  # Non-critical
+            pass
 
 
 _instance: CaseShowcaseService | None = None
