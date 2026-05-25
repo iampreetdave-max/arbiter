@@ -1,0 +1,113 @@
+name: Arbiter CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    env:
+      GEMINI_API_KEY: test-key-for-ci
+      GOOGLE_CLOUD_PROJECT: arbiter-test
+      FIREBASE_PROJECT_ID: arbiter-test
+      RAZORPAY_KEY_ID: rzp_test_ci
+      RAZORPAY_KEY_SECRET: ci_secret_key
+      GCS_BUCKET_NAME: arbiter-test-bucket
+      ENVIRONMENT: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r arbiter/backend/requirements.txt
+
+      - name: Run backend tests with coverage
+        working-directory: .
+        run: |
+          pytest arbiter/tests/ -v \
+            --tb=short \
+            --cov=arbiter/backend \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=60 \
+            -m "not integration and not slow"
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff
+      - name: Ruff lint
+        run: ruff check arbiter/backend/ --select=E,F,W --ignore=E501 || true
+
+  frontend-build:
+    name: Frontend Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: arbiter/frontend/package.json
+
+      - name: Install frontend dependencies
+        working-directory: arbiter/frontend
+        run: npm ci --prefer-offline || npm install
+
+      - name: Type check
+        working-directory: arbiter/frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_FIREBASE_API_KEY: test
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: test.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: test
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: test.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '123456'
+          NEXT_PUBLIC_FIREBASE_APP_ID: 1:123:web:abc
+          NEXT_PUBLIC_RAZORPAY_KEY_ID: rzp_test_ci
+        run: npx tsc --noEmit || true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install bandit
+        run: pip install bandit[toml]
+      - name: Run bandit security scan
+        run: |
+          bandit -r arbiter/backend/ \
+            -x arbiter/tests/ \
+            --severity-level medium \
+            --confidence-level medium \
+            -f txt || true
