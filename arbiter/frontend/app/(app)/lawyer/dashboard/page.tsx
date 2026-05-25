@@ -46,7 +46,6 @@ export default function LawyerDashboardPage() {
         const token = await getToken()
         const headers = { Authorization: `Bearer ${token}` }
 
-        // Fetch profile
         const profileRes = await fetch(`${BASE}/api/lawyers/me`, { headers })
         if (profileRes.status === 404) {
           setError('no_profile')
@@ -55,7 +54,6 @@ export default function LawyerDashboardPage() {
         const profileData = await profileRes.json()
         setProfile(profileData)
 
-        // Fetch matches
         const params = new URLSearchParams()
         if (statusFilter) params.set('status_filter', statusFilter)
         const matchesRes = await fetch(`${BASE}/api/lawyers/me/cases?${params}`, { headers })
@@ -123,7 +121,6 @@ export default function LawyerDashboardPage() {
         </div>
       )}
 
-      {/* Filter */}
       <div className="flex gap-2 flex-wrap">
         {[['', 'All'], ['pending', 'Pending'], ['accepted', 'Accepted'], ['declined', 'Declined']].map(([val, label]) => (
           <button

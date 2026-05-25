@@ -1,13 +1,16 @@
+// ⚖️ Arbiter | Powered by Google Gemini 2.0 Pro | XPRIZE Build with Gemini
 /**
  * Typed API client for the Arbiter backend.
  * Automatically attaches Firebase JWT to every request.
  * All methods throw ApiError on non-2xx responses.
+ *
+ * Updated (Session 7): Added lawyers, legal updates, public cases APIs.
  */
 import { auth } from './firebase'
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-// ── Error class ──────────────────────────────────────────────────────────────────
+// ── Error class ───────────────────────────────────────────────────────────────
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -15,7 +18,7 @@ export class ApiError extends Error {
   }
 }
 
-// ── Core fetch wrapper ───────────────────────────────────────────────────────────
+// ── Core fetch wrapper ────────────────────────────────────────────────────────
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = auth.currentUser ? await auth.currentUser.getIdToken() : null
   const res = await fetch(`${BASE}${path}`, {
@@ -33,7 +36,22 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ── Domain types ───────────────────────────────────────────────────────────────
+/** Public request — no auth token attached. */
+async function pubReq<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new ApiError(res.status, body.detail ?? 'Unknown error')
+  }
+  return res.json() as Promise<T>
+}
+
+// ── Domain types ──────────────────────────────────────────────────────────────
+export type CountryCode = 'IN' | 'US' | 'GB' | 'CA' | 'AU'
+
 export type ProblemType =
   | 'tenant_dispute'
   | 'employment'
@@ -41,6 +59,7 @@ export type ProblemType =
   | 'rti'
   | 'harassment'
   | 'debt_recovery'
+  | 'other'
 
 export type CaseStatus =
   | 'intake'
@@ -50,6 +69,7 @@ export type CaseStatus =
   | 'complete'
   | 'paid'
   | 'tracking'
+  | 'escalated'
   | 'closed'
 
 export type CaseOutcome =
@@ -66,7 +86,23 @@ export type DocumentType =
   | 'consumer_complaint'
   | 'cease_desist'
   | 'employment_complaint'
+  | 'small_claims_filing'
+  | 'data_subject_access_request'
 
+export type LawyerSpecialty =
+  | 'consumer' | 'employment' | 'tenant' | 'criminal' | 'family'
+  | 'corporate' | 'immigration' | 'property' | 'civil' | 'cyber'
+  | 'rti' | 'debt_recovery' | 'other'
+
+export type LawyerStatus = 'pending' | 'verified' | 'suspended' | 'rejected'
+
+export type LegalUpdateCategory = 'legislation' | 'judgment' | 'regulation' | 'advisory'
+
+export type CaseShowcaseCategory =
+  | 'consumer' | 'employment' | 'tenant' | 'civil_rights'
+  | 'landmark' | 'cyber' | 'corporate'
+
+// ── Existing domain interfaces ─────────────────────────────────────────────
 export interface GroundingSource {
   title: string
   url: string
@@ -79,6 +115,7 @@ export interface ArbiterCase {
   title?: string
   description?: string
   status: CaseStatus
+  country_code?: CountryCode
   jurisdiction?: string
   intake_complete?: boolean
   outcome?: CaseOutcome
@@ -101,15 +138,14 @@ export interface ArbiterDocument {
   case_id: string
   type: DocumentType
   title: string
-  content?: string          // null if not paid
-  preview?: string          // first 300 chars
+  content?: string
+  preview?: string
   citations: Citation[]
   disclaimer: string
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded'
   gcs_url?: string
   created_at?: string
   amount_paise: number
-  // Confidence & grounding
   confidence_score: number
   grounding_sources: string[]
   verified_citations: number
@@ -133,102 +169,155 @@ export interface PaymentOrder {
   document_id: string
 }
 
-// ── Cases API ──────────────────────────────────────────────────────────────────
+// ── New domain interfaces (Session 7) ──────────────────────────────────────
+export interface Country {
+  code: CountryCode
+  name: string
+  flag: string
+}
+
+export interface Lawyer {
+  id: string
+  full_name: string
+  country_code: CountryCode
+  jurisdiction: string
+  specialties: LawyerSpecialty[]
+  years_of_experience: number
+  available_for_pro_bono: boolean
+  status: LawyerStatus
+  bio: string
+  cases_resolved: number
+  rating: number
+  rating_count: number
+  languages: string[]
+  created_at?: string
+}
+
+export interface LawyerRegisterPayload {
+  full_name: string
+  bar_registration_number: string
+  country_code: CountryCode
+  jurisdiction: string
+  specialties: LawyerSpecialty[]
+  years_of_experience: number
+  available_for_pro_bono: boolean
+  bio: string
+  contact_email: string
+  contact_phone?: string
+  website_url?: string
+  languages?: string[]
+}
+
+export interface LawyerMatch {
+  id: string
+  lawyer_id: string
+  case_id: string
+  case_title: string
+  case_problem_type: ProblemType
+  case_country_code: CountryCode
+  case_jurisdiction: string
+  match_score: number
+  status: 'pending' | 'accepted' | 'declined' | 'completed'
+  lawyer_notes?: string
+  created_at?: string
+}
+
+export interface LawyerMatchResult {
+  matched: boolean
+  lawyer?: Lawyer
+  match_id?: string
+  message: string
+}
+
+export interface LegalUpdate {
+  id: string
+  country_code: CountryCode
+  country_name: string
+  category: LegalUpdateCategory
+  title: string
+  summary: string
+  impact: string
+  effective_date: string
+  source_hint: string
+  fetched_at: string
+  week_number: number
+  year: number
+}
+
+export interface PublicCase {
+  id: string
+  country_code: CountryCode
+  country_name: string
+  title: string
+  parties: string
+  court: string
+  year: number
+  category: CaseShowcaseCategory
+  summary: string
+  legal_lesson: string
+  citizen_impact: string
+  is_landmark: boolean
+  source_hint: string
+  fetched_at: string
+  view_count: number
+}
+
+// ── Cases API ─────────────────────────────────────────────────────────────────
 export const casesApi = {
-  /** List all cases for the authenticated user. */
   list: () => req<{ cases: ArbiterCase[]; total: number }>('/api/cases/'),
 
-  /** Fetch a single case by ID. */
   get: (id: string) => req<ArbiterCase>(`/api/cases/${id}`),
 
-  /** Start an intake chat — creates a case and returns the AI's first response. */
-  startChat: (message: string) =>
+  startChat: (message: string, countryCode?: CountryCode) =>
     req<ChatResponse>('/cases/chat', {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, country_code: countryCode }),
     }),
 
-  /** Send a follow-up message in an existing case's intake conversation. */
   sendMessage: (caseId: string, message: string) =>
     req<ChatResponse>(`/cases/${caseId}/message`, {
       method: 'POST',
       body: JSON.stringify({ message }),
     }),
 
-  /** Trigger synchronous document generation for a case. */
   generateDocument: (caseId: string, documentType: DocumentType = 'demand_letter') =>
     req<{ document_id: string; case_id: string; status: string }>(
       `/api/cases/${caseId}/generate`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ document_type: documentType }),
-      },
+      { method: 'POST', body: JSON.stringify({ document_type: documentType }) },
     ),
 
-  /**
-   * Record the outcome of a case (what happened after sending the document).
-   * Returns the updated case.
-   */
-  updateOutcome: (
-    caseId: string,
-    outcome: CaseOutcome,
-    outcomeNotes?: string,
-  ) =>
+  updateOutcome: (caseId: string, outcome: CaseOutcome, outcomeNotes?: string) =>
     req<ArbiterCase>(`/api/cases/${caseId}/outcome`, {
       method: 'PATCH',
       body: JSON.stringify({ outcome, outcome_notes: outcomeNotes }),
     }),
 
-  /**
-   * Open an SSE stream to watch document generation in real time.
-   * Returns an EventSource. The caller must add onmessage + onerror handlers.
-   *
-   * Message format:
-   *   { chunk: string }          → append to document draft
-   *   { done: true, document_id: string } → generation complete
-   *   { error: string }          → generation failed
-   */
-  streamGenerate: async (
-    caseId: string,
-    documentType: DocumentType = 'demand_letter',
-  ): Promise<EventSource> => {
+  streamGenerate: async (caseId: string, documentType: DocumentType = 'demand_letter') => {
     const token = auth.currentUser ? await auth.currentUser.getIdToken() : ''
-    // EventSource doesn't support custom headers; pass token as query param
     const url = `${BASE}/api/cases/${caseId}/generate/stream?document_type=${documentType}&token=${token}`
     return new EventSource(url)
   },
+
+  /** Request lawyer escalation for a case. */
+  escalateToLawyer: (caseId: string) =>
+    req<LawyerMatchResult>(`/api/cases/${caseId}/escalate-to-lawyer`, { method: 'POST' }),
 }
 
-// ── Documents API ─────────────────────────────────────────────────────────────────
+// ── Documents API ─────────────────────────────────────────────────────────────
 export const documentsApi = {
-  /** Fetch a document by ID. */
   get: (id: string) => req<ArbiterDocument>(`/api/documents/${id}`),
 
-  /** Fetch all documents for a case (uses cases list endpoint). */
-  getByCaseId: async (caseId: string): Promise<ArbiterDocument[]> => {
-    // The backend doesn't have a filter endpoint yet — fetch case and use doc ID
-    // This will be enhanced once document list endpoint exists
-    return []
-  },
+  getByCaseId: async (_caseId: string): Promise<ArbiterDocument[]> => [],
 
-  /**
-   * Revise a paid document with natural language instructions.
-   * Example: "Make the tone more assertive"
-   * Returns the updated document (max 3 revisions per document).
-   */
   revise: (documentId: string, instructions: string) =>
     req<ArbiterDocument>(`/api/documents/${documentId}/revise`, {
       method: 'POST',
       body: JSON.stringify({ instructions }),
     }),
 
-  /** Create a Razorpay payment order for a document. */
   createOrder: (documentId: string) =>
-    req<PaymentOrder>(`/api/documents/${documentId}/create-order`, {
-      method: 'POST',
-    }),
+    req<PaymentOrder>(`/api/documents/${documentId}/create-order`, { method: 'POST' }),
 
-  /** Verify payment after Razorpay checkout. */
   verifyPayment: (
     documentId: string,
     razorpayOrderId: string,
@@ -247,15 +336,115 @@ export const documentsApi = {
       },
     ),
 
-  /** Get signed GCS download URL (paid only). */
   getDownloadUrl: (documentId: string) =>
     req<{ download_url: string; expires_in_minutes: number }>(
       `/api/documents/${documentId}/download-url`,
     ),
 }
 
-// ── Payments API (legacy — kept for compatibility) ────────────────────────────────
+// ── Lawyers API (Session 7) ───────────────────────────────────────────────────
+export const lawyersApi = {
+  /** Browse verified lawyers publicly (no auth needed). */
+  list: (params?: {
+    country_code?: CountryCode
+    specialty?: LawyerSpecialty
+    pro_bono_only?: boolean
+    limit?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.country_code) qs.set('country_code', params.country_code)
+    if (params?.specialty) qs.set('specialty', params.specialty)
+    if (params?.pro_bono_only) qs.set('pro_bono_only', 'true')
+    if (params?.limit) qs.set('limit', String(params.limit))
+    return pubReq<{ lawyers: Lawyer[]; total: number }>(`/api/lawyers?${qs}`)
+  },
+
+  /** Get a specific lawyer's public profile. */
+  get: (lawyerId: string) => pubReq<Lawyer>(`/api/lawyers/${lawyerId}`),
+
+  /** Register as a lawyer. */
+  register: (payload: LawyerRegisterPayload) =>
+    req<Lawyer & { message: string }>('/api/lawyers/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  /** Get own lawyer profile (auth required). */
+  getMyProfile: () => req<Lawyer>('/api/lawyers/me'),
+
+  /** Update own lawyer profile. */
+  updateMyProfile: (updates: Partial<Pick<LawyerRegisterPayload, 'specialties' | 'available_for_pro_bono' | 'bio' | 'contact_phone' | 'website_url' | 'languages'>>) =>
+    req<Lawyer>('/api/lawyers/me', {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }),
+
+  /** Get cases matched to this lawyer (lawyer dashboard). */
+  getMyMatches: (statusFilter?: string, limit?: number) => {
+    const qs = new URLSearchParams()
+    if (statusFilter) qs.set('status_filter', statusFilter)
+    if (limit) qs.set('limit', String(limit))
+    return req<{ matches: LawyerMatch[]; total: number; lawyer_id: string }>(
+      `/api/lawyers/me/cases?${qs}`,
+    )
+  },
+
+  /** Accept or decline a case match. */
+  respondToMatch: (matchId: string, action: 'accept' | 'decline', notes?: string) =>
+    req<LawyerMatch>(`/api/lawyers/me/cases/${matchId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action, notes }),
+    }),
+}
+
+// ── Legal Updates API (Session 7) ────────────────────────────────────────────
+export const legalUpdatesApi = {
+  /** Get recent legal updates (public, no auth needed). */
+  list: (params?: {
+    country_code?: CountryCode | ''
+    category?: LegalUpdateCategory | ''
+    days_back?: number
+    limit?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.country_code) qs.set('country_code', params.country_code)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.days_back) qs.set('days_back', String(params.days_back))
+    if (params?.limit) qs.set('limit', String(params.limit))
+    return pubReq<{ updates: LegalUpdate[]; total: number; supported_countries: Country[] }>(
+      `/api/legal-updates?${qs}`,
+    )
+  },
+
+  /** Get list of supported countries. */
+  getSupportedCountries: () =>
+    pubReq<{ countries: Country[] }>('/api/legal-updates/countries'),
+}
+
+// ── Public Cases API (Session 7) ──────────────────────────────────────────────
+export const publicCasesApi = {
+  /** Browse public case showcase (no auth needed). */
+  list: (params?: {
+    country_code?: CountryCode | ''
+    category?: CaseShowcaseCategory | ''
+    landmark_only?: boolean
+    limit?: number
+  }) => {
+    const qs = new URLSearchParams()
+    if (params?.country_code) qs.set('country_code', params.country_code)
+    if (params?.category) qs.set('category', params.category)
+    if (params?.landmark_only) qs.set('landmark_only', 'true')
+    if (params?.limit) qs.set('limit', String(params.limit))
+    return pubReq<{ cases: PublicCase[]; total: number; categories: string[] }>(
+      `/api/public-cases?${qs}`,
+    )
+  },
+
+  /** Get a specific public case (also increments view count). */
+  get: (caseId: string) => pubReq<PublicCase>(`/api/public-cases/${caseId}`),
+}
+
+// ── Payments API (legacy — kept for compatibility) ────────────────────────────
 export const paymentsApi = {
-  /** Create a Razorpay order for a document. */
   createOrder: (documentId: string) => documentsApi.createOrder(documentId),
 }

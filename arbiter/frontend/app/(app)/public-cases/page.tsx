@@ -61,7 +61,6 @@ export default function PublicCasesPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Case Showcase</h1>
         <p className="text-white/50 text-sm mt-1">
@@ -69,7 +68,6 @@ export default function PublicCasesPage() {
         </p>
       </div>
 
-      {/* Filters */}
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           {COUNTRIES.map((c) => (
@@ -114,7 +112,6 @@ export default function PublicCasesPage() {
         </div>
       </div>
 
-      {/* Content */}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1,2,3,4,5,6].map((i) => (
@@ -127,7 +124,7 @@ export default function PublicCasesPage() {
         </div>
       ) : cases.length === 0 ? (
         <div className="text-center py-16 border border-white/10 rounded-xl">
-          <div className="text-4xl mb-3">🏙️</div>
+          <div className="text-4xl mb-3">🏛️</div>
           <p className="text-white/50 text-sm">No cases found for this filter.</p>
         </div>
       ) : (

@@ -56,7 +56,6 @@ export default function LegalUpdatesPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Legal Updates</h1>
         <p className="text-white/50 text-sm mt-1">
@@ -64,9 +63,7 @@ export default function LegalUpdatesPage() {
         </p>
       </div>
 
-      {/* Filters */}
       <div className="space-y-3">
-        {/* Country filter */}
         <div className="flex flex-wrap gap-2">
           {COUNTRIES.map((c) => (
             <button
@@ -83,7 +80,6 @@ export default function LegalUpdatesPage() {
           ))}
         </div>
 
-        {/* Category filter */}
         <div className="flex flex-wrap gap-2">
           {CATEGORIES.map((cat) => (
             <button
@@ -101,7 +97,6 @@ export default function LegalUpdatesPage() {
         </div>
       </div>
 
-      {/* Content */}
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (

@@ -83,7 +83,6 @@ export default function LawyerRegisterPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-white">Join as a Lawyer</h1>
         <p className="text-white/50 text-sm mt-1">
@@ -91,7 +90,6 @@ export default function LawyerRegisterPage() {
         </p>
       </div>
 
-      {/* Stepper */}
       <div className="flex items-center gap-2">
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
@@ -110,7 +108,6 @@ export default function LawyerRegisterPage() {
         ))}
       </div>
 
-      {/* Step 0 — Profile */}
       {step === 0 && (
         <div className="space-y-4">
           <div className="space-y-1">
@@ -206,7 +203,6 @@ export default function LawyerRegisterPage() {
         </div>
       )}
 
-      {/* Step 1 — Specialties */}
       {step === 1 && (
         <div className="space-y-4">
           <SpecialtySelector
@@ -232,7 +228,6 @@ export default function LawyerRegisterPage() {
         </div>
       )}
 
-      {/* Step 2 — Review */}
       {step === 2 && (
         <div className="space-y-4">
           <div className="bg-white/5 border border-white/10 rounded-xl p-5 space-y-3 text-sm">
