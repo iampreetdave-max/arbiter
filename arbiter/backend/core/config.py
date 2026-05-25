@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     doc_price_paise: int = Field(default=29900, description="Per-document price in paise (₹299)")
     monthly_price_paise: int = Field(default=79900, description="Monthly plan price in paise (₹799)")
 
+    # ── Sentry (crash alerting) ───────────────────────────────────────────────
+    sentry_dsn: str = Field(default="", description="Sentry DSN for crash reporting (empty = disabled)")
+
+    # ── Admin API ─────────────────────────────────────────────────────────────
+    admin_secret_key: str = Field(default="change-me-in-production", description="X-Admin-Key header for /api/admin endpoints")
+
+    # ── Backup ────────────────────────────────────────────────────────────────
+    backup_bucket_name: str = Field(default="arbiter-backups", description="GCS bucket for Firestore backups")
+
+    # ── Rate Limiting ─────────────────────────────────────────────────────────
+    rate_limit_per_minute: int = Field(default=60, description="Max requests per minute per IP")
+    rate_limit_per_day: int = Field(default=500, description="Max requests per day per IP")
+
     @property
     def is_production(self) -> bool:
         """True when running in production."""
