@@ -14,7 +14,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ── Python path setup ────────────────────────────────────────────────────────────────────────────
-sy s.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 # ── Environment variables required before importing app ────────────────────────────────────────────
 os.environ.setdefault('GEMINI_API_KEY', 'test-gemini-key-xxx')

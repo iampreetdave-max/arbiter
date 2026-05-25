@@ -122,6 +122,23 @@ async def revise_document(
             detail="Maximum 3 revisions allowed per document. Contact support for additional changes.",
         )
 
+    # ── Save version snapshot BEFORE overwriting ────────────────────────────────────────────────────
+    try:
+        from services.backup_service import BackupService
+        backup_svc = BackupService()
+        backup_svc.save_document_version(
+            document_id=document_id,
+            content=current_content,
+            revision_count=revision_count,
+            change_description=f"Auto-snapshot before revision {revision_count + 1}: {body.instructions[:80]}",
+        )
+    except Exception as backup_exc:
+        # Never block revision on backup failure — log and continue
+        logger.warning(
+            "version_snapshot_failed",
+            extra={"doc_id": document_id, "error": str(backup_exc)},
+        )
+
     drafting_agent = get_drafting_agent()
     revised_content = await drafting_agent.revise(
         original_content=current_content,
@@ -231,7 +248,7 @@ async def verify_payment(
     return {"status": "paid", "document_id": document_id}
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ─────────────────────────────────────────────────────────────────────────────────
 
 def _assert_doc_access(doc: dict | None, doc_id: str, user_id: str) -> None:
     if not doc:

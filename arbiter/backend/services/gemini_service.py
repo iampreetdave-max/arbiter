@@ -83,7 +83,7 @@ class GeminiService:
             "You communicate clearly in plain English and, when asked, in Hindi."
         )
 
-    # ── Standard generation ───────────────────────────────────────────────────
+    # ── Standard generation ─────────────────────────────────────────────────────────────────────────────
 
     async def generate(
         self,
@@ -105,6 +105,23 @@ class GeminiService:
                     )
                 text = response.text
                 logger.info("gemini_generate_ok", extra={"chars": len(text), "attempt": attempt})
+
+                # ── Cost tracking (non-blocking) ──────────────────────────────────────────────────
+                try:
+                    usage = getattr(response, "usage_metadata", None)
+                    tokens_in = getattr(usage, "prompt_token_count", 0) or 0
+                    tokens_out = getattr(usage, "candidates_token_count", 0) or 0
+                    from core.monitoring import track_gemini_call
+                    await track_gemini_call(
+                        user_id="",
+                        operation="generate",
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        grounded=False,
+                    )
+                except Exception:
+                    pass  # Never block generation on monitoring failure
+
                 return text
 
             except ResourceExhausted:
@@ -125,7 +142,7 @@ class GeminiService:
 
         raise RuntimeError("Gemini generation failed after all retries.")
 
-    # ── Google Search Grounding ───────────────────────────────────────────────
+    # ── Google Search Grounding ───────────────────────────────────────────────────────────────────────────
 
     async def generate_with_grounding(
         self,
@@ -183,6 +200,23 @@ class GeminiService:
                     "gemini_grounded_ok",
                     extra={"sources": len(sources), "chars": len(text), "attempt": attempt},
                 )
+
+                # ── Cost tracking (non-blocking) ──────────────────────────────────────────────────
+                try:
+                    usage = getattr(response, "usage_metadata", None)
+                    tokens_in = getattr(usage, "prompt_token_count", 0) or 0
+                    tokens_out = getattr(usage, "candidates_token_count", 0) or 0
+                    from core.monitoring import track_gemini_call
+                    await track_gemini_call(
+                        user_id="",
+                        operation="generate_with_grounding",
+                        tokens_in=tokens_in,
+                        tokens_out=tokens_out,
+                        grounded=True,
+                    )
+                except Exception:
+                    pass  # Never block generation on monitoring failure
+
                 return text, sources
 
             except ResourceExhausted:
@@ -197,12 +231,12 @@ class GeminiService:
                 )
                 break  # Fall through to non-grounded
 
-        # ── Fallback: regular generation ──────────────────────────────────────
+        # ── Fallback: regular generation ────────────────────────────────────────────────────────────────
         logger.info("grounding_fallback")
         text = await self.generate(prompt)
         return text, []
 
-    # ── Streaming generation ──────────────────────────────────────────────────
+    # ── Streaming generation ─────────────────────────────────────────────────────────────────────────────
 
     async def stream_generate(self, prompt: str) -> AsyncGenerator[str, None]:
         """
@@ -283,7 +317,7 @@ class GeminiService:
                 raise RuntimeError(f"Chat streaming failed: {item}")
             yield item
 
-    # ── Structured JSON generation ────────────────────────────────────────────
+    # ── Structured JSON generation ────────────────────────────────────────────────────────────────────────
 
     async def generate_structured(
         self,
@@ -328,7 +362,7 @@ class GeminiService:
             logger.warning("gemini_json_parse_failed", extra={"raw": text[:200]})
             return {"raw": text}
 
-    # ── Multi-turn chat ───────────────────────────────────────────────────────
+    # ── Multi-turn chat ────────────────────────────────────────────────────────────────────────────────
 
     async def chat(
         self,
@@ -382,7 +416,7 @@ class GeminiService:
         raise RuntimeError("Chat failed after all retries.")
 
 
-# ── Module-level singleton ────────────────────────────────────────────────────
+# ── Module-level singleton ───────────────────────────────────────────────────────────────────────────
 
 _gemini_service: Optional[GeminiService] = None
 
