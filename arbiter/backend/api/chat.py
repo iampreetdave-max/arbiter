@@ -21,6 +21,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from core.sanitize import classify_legal_relevance, get_scope_rejection_message, sanitize_text
 from core.security import get_current_user
 from services.firebase_service import get_firebase_service
 from services.gemini_service import get_gemini_service
@@ -28,7 +29,7 @@ from services.gemini_service import get_gemini_service
 router = APIRouter(tags=["chat"])
 logger = structlog.get_logger()
 
-# ── Request / response models ─────────────────────────────────────────────────────────────────────────────────────
+# ── Request / response models ─────────────────────────────────────────────────────────────────
 
 class ChatStartRequest(BaseModel):
     """First message — creates a new case and starts the intake."""
@@ -49,7 +50,7 @@ class ChatResponse(BaseModel):
     updated_case: dict[str, Any] | None = None
 
 
-# ── System prompt ───────────────────────────────────────────────────────────────────────────────────────────
+# ── System prompt ────────────────────────────────────────────────────────────────────────────
 
 INTAKE_SYSTEM_PROMPT = """You are Arbiter, an AI legal assistant specialising in Indian law.
 Your job is to gather information from users about their legal problem and help them get the right legal document.
@@ -105,7 +106,7 @@ def _strip_intake_tag(text: str) -> str:
     return re.sub(r"<intake_complete>.*?</intake_complete>", "", text, flags=re.DOTALL).strip()
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────────────────────────────────────
+# ── Endpoints ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/cases/chat", response_model=ChatResponse, status_code=status.HTTP_201_CREATED)
 async def start_chat(
@@ -120,6 +121,33 @@ async def start_chat(
     """
     firebase = get_firebase_service()
     gemini   = get_gemini_service()
+
+    # ── Sanitize + AI scope enforcement ──────────────────────────────────────────────────
+    clean_message = sanitize_text(body.message)
+    classification, reason = classify_legal_relevance(clean_message)
+    if classification in ("off_topic", "injection"):
+        logger.warning(
+            "chat_blocked",
+            classification=classification,
+            reason=reason,
+            preview=clean_message[:60],
+        )
+        # Track suspicious injection attempts
+        if classification == "injection":
+            try:
+                from core.monitoring import track_suspicious_activity
+                await track_suspicious_activity(
+                    user_id=current_user["uid"],
+                    activity_type="prompt_injection_attempt",
+                    details={"reason": reason, "preview": clean_message[:120]},
+                )
+            except Exception:
+                pass
+        return ChatResponse(
+            response=get_scope_rejection_message(classification),
+            case_id="",
+            ready_to_generate=False,
+        )
 
     # Build conversation with system prompt + user's opening message
     conversation = [
@@ -192,6 +220,32 @@ async def send_message(
     firebase = get_firebase_service()
     gemini   = get_gemini_service()
 
+    # ── Sanitize + AI scope enforcement ──────────────────────────────────────────────────
+    clean_message = sanitize_text(body.message)
+    classification, reason = classify_legal_relevance(clean_message)
+    if classification in ("off_topic", "injection"):
+        logger.warning(
+            "follow_up_blocked",
+            case_id=case_id,
+            classification=classification,
+            reason=reason,
+        )
+        if classification == "injection":
+            try:
+                from core.monitoring import track_suspicious_activity
+                await track_suspicious_activity(
+                    user_id=current_user["uid"],
+                    activity_type="prompt_injection_attempt",
+                    details={"case_id": case_id, "reason": reason, "preview": clean_message[:120]},
+                )
+            except Exception:
+                pass
+        return ChatResponse(
+            response=get_scope_rejection_message(classification),
+            case_id=case_id,
+            ready_to_generate=False,
+        )
+
     # Load the case
     case = firebase.get_case(case_id)
     if not case:
@@ -256,7 +310,7 @@ async def send_message(
     )
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Helpers ────────────────────────────────────────────────────────────────────────────────
 
 def _map_doc_type_to_problem(doc_type: str) -> str:
     """Map document_type to the closest problem_type enum value."""
