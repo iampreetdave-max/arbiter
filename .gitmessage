@@ -1,0 +1,14 @@
+
+# ─────────────────────────────────────────────────────────────
+# Arbiter ⚖️  |  Built with Google Gemini 2.0 Pro
+# XPRIZE Build with Gemini 2026  |  Model: gemini-2.0-pro-exp
+# ─────────────────────────────────────────────────────────────
+# Format: type(scope): short description
+# Types: feat | fix | docs | refactor | test | ci | chore
+#
+# Example:
+#   feat(chat): add multi-country legal context injection
+#
+# Gemini usage in this commit:
+#   (describe which Gemini feature / agent was touched)
+# ─────────────────────────────────────────────────────────────
