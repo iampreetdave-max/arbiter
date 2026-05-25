@@ -17,8 +17,20 @@ class CaseStatus(str, Enum):
     INTAKE = "intake"           # Collecting problem details
     RESEARCH = "research"       # AI looking up applicable laws
     DRAFTING = "drafting"       # AI generating document
+    DRAFT_READY = "draft_ready" # Document generated, awaiting payment
     COMPLETE = "complete"       # Document ready for download
+    PAID = "paid"               # Payment confirmed
     TRACKING = "tracking"       # Following up on sent documents
+    CLOSED = "closed"           # Case closed
+
+
+class CaseOutcome(str, Enum):
+    """What happened after the user sent their document."""
+    PENDING = "pending"             # Document sent, waiting for response
+    RESOLVED = "resolved"           # Issue resolved in user's favour ✓
+    PARTIAL = "partial"             # Partial resolution
+    ESCALATED = "escalated"         # Had to escalate to court/authority
+    NO_RESPONSE = "no_response"     # Opposing party didn't respond
 
 
 class ProblemType(str, Enum):
@@ -57,16 +69,55 @@ class IntakeData(BaseModel):
     previous_attempts: Optional[str] = Field(
         default=None, description="What user has already tried"
     )
+    language: str = Field(default="en", description="Detected language: 'en' or 'hi'")
+
+
+class GroundingSource(BaseModel):
+    """A verified source used during AI legal research."""
+    title: str = Field(..., description="Title of the source (e.g. 'Consumer Protection Act 2019')")
+    url: str = Field(..., description="URL of the verified source")
 
 
 class ResearchData(BaseModel):
     """Output of the ResearchAgent — applicable laws and precedents."""
-    relevant_acts: list[str] = Field(default_factory=list, description="e.g. ['Consumer Protection Act 2019, Section 35']")
-    relevant_sections: list[str] = Field(default_factory=list, description="Specific sections that apply")
-    case_precedents: list[str] = Field(default_factory=list, description="Relevant court judgements")
-    legal_remedies: list[str] = Field(default_factory=list, description="Available legal options")
-    recommended_document_type: str = Field(default="demand_letter", description="What to draft")
+    relevant_acts: list[str] = Field(
+        default_factory=list,
+        description="e.g. ['Consumer Protection Act 2019, Section 35']",
+    )
+    relevant_sections: list[str] = Field(
+        default_factory=list,
+        description="Specific sections that apply",
+    )
+    case_precedents: list[str] = Field(
+        default_factory=list,
+        description="Relevant court judgements",
+    )
+    legal_remedies: list[str] = Field(
+        default_factory=list,
+        description="Available legal options",
+    )
+    recommended_document_type: str = Field(
+        default="demand_letter",
+        description="What to draft",
+    )
     research_summary: str = Field(default="", description="Plain-English summary of legal position")
+    time_limit_days: Optional[int] = Field(
+        default=None,
+        description="Statutory time limit to file complaint (days)",
+    )
+    authority_to_approach: Optional[str] = Field(
+        default=None,
+        description="e.g. 'District Consumer Commission, Delhi'",
+    )
+    # ── Grounding & confidence ──────────────────────────────────────────────────
+    confidence_score: float = Field(
+        default=0.0,
+        description="0–100 confidence based on verified grounding sources",
+    )
+    grounding_sources: list[GroundingSource] = Field(
+        default_factory=list,
+        description="Real-web sources used to ground this research",
+    )
 
 
 class ConversationMessage(BaseModel):
@@ -93,6 +144,16 @@ class CaseMessage(BaseModel):
     message: str = Field(..., min_length=1, description="User's reply to Arbiter's question")
 
 
+class CaseOutcomeUpdate(BaseModel):
+    """Request body to update the outcome of a case."""
+    outcome: CaseOutcome
+    outcome_notes: Optional[str] = Field(
+        default=None,
+        description="Optional user notes about what happened",
+        max_length=500,
+    )
+
+
 class CaseResponse(BaseModel):
     """API response representing a case."""
     id: str
@@ -100,10 +161,14 @@ class CaseResponse(BaseModel):
     status: CaseStatus
     problem_type: Optional[ProblemType] = None
     jurisdiction: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
     intake_data: Optional[IntakeData] = None
     research_data: Optional[ResearchData] = None
     conversation_history: list[ConversationMessage] = Field(default_factory=list)
     intake_complete: bool = False
+    outcome: Optional[CaseOutcome] = None
+    outcome_notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     next_message: Optional[str] = Field(

@@ -24,12 +24,12 @@ LEGAL_DISCLAIMER = (
 
 class DocumentType(str, Enum):
     """Type of legal document Arbiter can generate."""
-    DEMAND_LETTER = "demand_letter"             # Most common — pay up or face legal action
-    RTI_APPLICATION = "rti_application"         # Right to Information request
-    CONSUMER_COMPLAINT = "consumer_complaint"   # NCDRC / district forum complaint
-    CEASE_DESIST = "cease_desist"               # Stop doing X or face legal action
+    DEMAND_LETTER = "demand_letter"              # Most common — pay up or face legal action
+    RTI_APPLICATION = "rti_application"          # Right to Information request
+    CONSUMER_COMPLAINT = "consumer_complaint"    # NCDRC / district forum complaint
+    CEASE_DESIST = "cease_desist"                # Stop doing X or face legal action
     EMPLOYMENT_COMPLAINT = "employment_complaint"  # Labour commissioner complaint
-    LEGAL_NOTICE = "legal_notice"               # Formal notice before filing suit
+    LEGAL_NOTICE = "legal_notice"                # Formal notice before filing suit
 
 
 class PaymentStatus(str, Enum):
@@ -45,6 +45,8 @@ class Citation(BaseModel):
     act: str = Field(..., description="e.g. 'Consumer Protection Act, 2019'")
     section: str = Field(..., description="e.g. 'Section 35(1)(a)'")
     description: str = Field(..., description="Plain-English explanation of how it applies")
+    verified: bool = Field(default=False, description="True if citation was grounded via web search")
+    source_url: Optional[str] = Field(default=None, description="URL of verified source")
 
 
 class LegalDocument(BaseModel):
@@ -57,7 +59,7 @@ class LegalDocument(BaseModel):
     content: str = Field(..., description="Full text of the legal document")
     citations: list[Citation] = Field(
         default_factory=list,
-        description="All legal citations supporting claims in the document"
+        description="All legal citations supporting claims in the document",
     )
     disclaimer: str = Field(default=LEGAL_DISCLAIMER)
     word_count: int = Field(default=0)
@@ -67,6 +69,24 @@ class LegalDocument(BaseModel):
     razorpay_payment_id: Optional[str] = None
     created_at: Optional[datetime] = None
     amount_paise: int = Field(default=29900, description="Price in paise (₹299 default)")
+    # ── Confidence & grounding ──────────────────────────────────────────────────
+    confidence_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="0–100 confidence score based on verified sources",
+    )
+    grounding_sources: list[str] = Field(
+        default_factory=list,
+        description="URLs of real sources used to verify legal claims",
+    )
+    verified_citations: int = Field(
+        default=0,
+        description="Number of citations confirmed via web grounding",
+    )
+    # ── Revision tracking ──────────────────────────────────────────────────────
+    revision_count: int = Field(default=0, description="Number of times document was revised")
+    language: str = Field(default="en", description="Document language: 'en' or 'hi'")
 
     def has_citations(self) -> bool:
         """Returns True if document has at least one citation."""
@@ -82,6 +102,15 @@ class LegalDocument(BaseModel):
             return self.content
         return self.content[:chars] + "...\n\n[Pay ₹299 to access full document]"
 
+    def confidence_label(self) -> str:
+        """Human-readable confidence label."""
+        if self.confidence_score >= 80:
+            return "High confidence"
+        elif self.confidence_score >= 50:
+            return "Medium confidence"
+        else:
+            return "Low confidence"
+
 
 # ── API Models ────────────────────────────────────────────────────────────────
 
@@ -89,7 +118,21 @@ class DocumentGenerateRequest(BaseModel):
     """Request body to trigger document generation for a case."""
     document_type: DocumentType = Field(
         default=DocumentType.DEMAND_LETTER,
-        description="Type of legal document to generate"
+        description="Type of legal document to generate",
+    )
+
+
+class DocumentReviseRequest(BaseModel):
+    """Request body to revise an existing document."""
+    instructions: str = Field(
+        ...,
+        min_length=5,
+        max_length=1000,
+        description="Natural language revision instructions",
+        examples=[
+            "Make the tone more assertive and increase the compensation demand to ₹75,000.",
+            "Add a paragraph about the mental harassment suffered. Reference Section 14 of Consumer Protection Act.",
+        ],
     )
 
 
@@ -101,11 +144,11 @@ class DocumentResponse(BaseModel):
     title: str
     content: Optional[str] = Field(
         default=None,
-        description="Full content — only present if payment_status is PAID"
+        description="Full content — only present if payment_status is PAID",
     )
     preview: Optional[str] = Field(
         default=None,
-        description="First 200 chars — shown before payment"
+        description="First 300 chars — shown before payment",
     )
     citations: list[Citation] = Field(default_factory=list)
     disclaimer: str
@@ -113,6 +156,12 @@ class DocumentResponse(BaseModel):
     gcs_url: Optional[str] = None
     created_at: Optional[datetime] = None
     amount_paise: int
+    # ── Confidence & grounding ──────────────────────────────────────────────────
+    confidence_score: float = 0.0
+    grounding_sources: list[str] = Field(default_factory=list)
+    verified_citations: int = 0
+    revision_count: int = 0
+    language: str = "en"
 
 
 class PaymentOrderRequest(BaseModel):
