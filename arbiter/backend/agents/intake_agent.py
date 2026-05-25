@@ -1,5 +1,5 @@
 """
-intake_agent.py — Conversational intake agent powered by Gemini.
+intake_agent.py — Conversational intake agent powered by Gemini | Google Gemini 2.0 Pro + ADK
 
 The IntakeAgent drives a multi-turn conversation with the user to
 collect all information needed to research and draft their legal document.
@@ -10,6 +10,10 @@ Flow:
     3. When enough info is collected → extracts structured IntakeData
     4. Returns intake_complete=True to trigger ResearchAgent
 """
+# ─────────────────────────────────────────────────────────────────────────────
+# Arbiter ⚖️  ·  Powered by Google Gemini 2.0 Pro  ·  XPRIZE Build with Gemini
+# Model: gemini-2.0-pro-exp  ·  Framework: Google Agent Development Kit (ADK)
+# ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import json
@@ -28,7 +32,7 @@ from services.gemini_service import GeminiService, get_gemini_service
 
 logger = logging.getLogger(__name__)
 
-# ── System prompt for the intake agent ──────────────────────────────────────────────
+# ── System prompt for the intake agent ───────────────────────────────────────────
 INTAKE_SYSTEM_PROMPT = """You are Arbiter's intake specialist — a warm, empathetic AI legal assistant helping everyday Indians navigate legal problems.
 
 Your job is to collect information about the user's legal problem through a natural conversation.
@@ -54,7 +58,7 @@ RULES:
 LANGUAGE: Respond in English. If user writes in Hindi, respond in Hindi.
 """
 
-# ── Extraction prompt ───────────────────────────────────────────────────────────────────
+# ── Extraction prompt ─────────────────────────────────────────────────────────────
 EXTRACTION_PROMPT_TEMPLATE = """Based on this conversation, extract the structured intake data.
 
 Conversation:

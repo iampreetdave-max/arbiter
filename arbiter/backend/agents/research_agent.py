@@ -1,5 +1,5 @@
 """
-research_agent.py — Legal research agent powered by Gemini with Google Search grounding.
+research_agent.py — Legal research agent powered by Google Gemini 2.0 Pro with Google Search grounding.
 
 Takes structured IntakeData and finds all applicable Indian laws,
 relevant sections, and legal remedies for the user's situation.
@@ -11,6 +11,10 @@ instead of relying purely on Gemini training data.
 Confidence score is computed based on how many grounding sources were returned —
 a proxy for how well the legal research is backed by real-world sources.
 """
+# ─────────────────────────────────────────────────────────────────────────────
+# Arbiter ⚖️  ·  Powered by Google Gemini 2.0 Pro  ·  XPRIZE Build with Gemini
+# Model: gemini-2.0-pro-exp  ·  Framework: Google Agent Development Kit (ADK)
+# ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import json
@@ -23,7 +27,7 @@ from services.gemini_service import GeminiService, get_gemini_service
 
 logger = logging.getLogger(__name__)
 
-# ── Legal knowledge base: problem type → primary acts ─────────────────────────
+# ── Legal knowledge base: problem type → primary acts ───────────────────────────────
 PROBLEM_TYPE_ACTS: dict[str, list[str]] = {
     "tenant_dispute": [
         "Transfer of Property Act, 1882",
@@ -136,11 +140,6 @@ class ResearchAgent:
 
     Uses Google Search grounding to verify that cited laws actually exist
     in real Indian legal databases, reducing hallucination risk.
-
-    Takes IntakeData → returns ResearchData with:
-      - real acts and sections (grounded)
-      - confidence score based on verified sources
-      - grounding sources (URLs for judge review)
     """
 
     def __init__(self, gemini_service: Optional[GeminiService] = None) -> None:
@@ -172,11 +171,8 @@ class ResearchAgent:
         - Case precedents present (+5 per precedent, up to 15)
         """
         score = 0.0
-
-        # Base: grounding sources found
         score += min(len(sources) * 15, 45)
 
-        # Bonus: authoritative sources (indiankanoon.org, legislative.gov.in, etc.)
         authoritative_domains = [
             "indiankanoon.org",
             "legislative.gov.in",
@@ -190,12 +186,10 @@ class ResearchAgent:
             if any(domain in url for domain in authoritative_domains):
                 score += 10
 
-        # Sections populated
         sections = result.get("relevant_sections", [])
         if sections:
             score += min(len(sections) * 5, 20)
 
-        # Case precedents (harder to verify, smaller bonus)
         precedents = result.get("case_precedents", [])
         score += min(len(precedents) * 5, 15)
 
@@ -227,18 +221,13 @@ class ResearchAgent:
             extra={"problem_type": problem_type_str, "jurisdiction": intake.jurisdiction},
         )
 
-        # ── Use Google Search grounding for verified research ──────────────────
         raw, grounding_sources = await self._gemini.generate_with_grounding(prompt)
-
-        # Strip markdown fences
         raw = re.sub(r"```(?:json)?\s*|\s*```", "", raw).strip()
 
         try:
             data = json.loads(raw)
-
             confidence = self._compute_confidence(grounding_sources, data)
 
-            # Convert raw source dicts to GroundingSource models
             sources = [
                 GroundingSource(
                     title=s.get("title", "Unknown source"),
@@ -275,7 +264,6 @@ class ResearchAgent:
 
         except (json.JSONDecodeError, KeyError, TypeError) as exc:
             logger.error("research_parse_failed", extra={"error": str(exc), "raw": raw[:300]})
-            # Return minimal research data so pipeline can continue
             return ResearchData(
                 relevant_acts=primary_acts[:3],
                 relevant_sections=[],

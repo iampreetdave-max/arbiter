@@ -1,5 +1,5 @@
 """
-tracking_agent.py — Deadline tracking and follow-up agent.
+tracking_agent.py — Deadline tracking and follow-up agent powered by Google Gemini 2.0 Pro + ADK.
 
 After a legal document is sent, TrackingAgent:
 1. Sets a response deadline (typically 30 days)
@@ -7,6 +7,10 @@ After a legal document is sent, TrackingAgent:
 3. Suggests next steps if there's no response
 4. Decides when to escalate to a lawyer referral
 """
+# ─────────────────────────────────────────────────────────────────────────────
+# Arbiter ⚖️  ·  Powered by Google Gemini 2.0 Pro  ·  XPRIZE Build with Gemini
+# Model: gemini-2.0-pro-exp  ·  Framework: Google Agent Development Kit (ADK)
+# ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import logging
@@ -32,11 +36,10 @@ Be practical and realistic. Tell the user:
 Use simple, supportive language. The user is already stressed.
 """
 
-# Default deadlines by document type (days)
 DEFAULT_DEADLINES: dict[str, int] = {
     "demand_letter": 30,
-    "rti_application": 30,       # RTI Act mandates 30-day response
-    "consumer_complaint": 45,    # Consumer forum timeline
+    "rti_application": 30,
+    "consumer_complaint": 45,
     "cease_desist": 15,
     "employment_complaint": 30,
     "legal_notice": 30,
@@ -66,17 +69,12 @@ class TrackingPlan:
 class TrackingAgent:
     """
     Creates follow-up plans and reminders after a legal document is sent.
-
-    Usage:
-        agent = TrackingAgent()
-        plan = await agent.create_tracking_plan(document, intake, research)
     """
 
     def __init__(self) -> None:
         self._gemini = GeminiService(system_instruction=TRACKING_SYSTEM_PROMPT)
 
     def _get_deadline_days(self, document: LegalDocument) -> int:
-        """Return appropriate response deadline in days for this document type."""
         return DEFAULT_DEADLINES.get(document.type.value, 30)
 
     def _build_reminders(
@@ -84,8 +82,7 @@ class TrackingAgent:
     ) -> list[dict]:
         """
         Generate a schedule of reminder notifications.
-
-        Reminders are sent at: Day 7, Day 15, Day 25, and Day 30 (deadline).
+        Reminders at: Day 7, Day 15, Day 25, and Day 30 (deadline).
         """
         deadline_days = (deadline_date - sent_date).days
         reminder_schedule = []
@@ -120,14 +117,6 @@ class TrackingAgent:
         document_type: str,
         deadline_days: int,
     ) -> tuple[list[str], list[str], str]:
-        """
-        Use Gemini to generate personalised next steps for this specific case.
-
-        Returns:
-            - next_steps_if_no_response
-            - next_steps_if_response
-            - escalation_advice
-        """
         prompt = f"""A user in {intake.jurisdiction} sent a {document_type.replace('_', ' ')} to {intake.respondent.name}.
 The deadline for response is {deadline_days} days.
 Problem: {intake.desired_outcome}
@@ -183,18 +172,7 @@ Be specific to Indian legal system. Name actual courts, commissions, authorities
         research: ResearchData,
         sent_date: Optional[datetime] = None,
     ) -> TrackingPlan:
-        """
-        Create a complete tracking plan for a sent legal document.
-
-        Args:
-            document: The generated legal document.
-            intake: Case intake data.
-            research: Legal research results.
-            sent_date: When document was sent (defaults to now).
-
-        Returns:
-            TrackingPlan with reminders, deadlines, and next steps.
-        """
+        """Create a complete tracking plan for a sent legal document."""
         if sent_date is None:
             sent_date = datetime.utcnow()
 
@@ -203,11 +181,7 @@ Be specific to Indian legal system. Name actual courts, commissions, authorities
 
         logger.info(
             "tracking_plan_started",
-            extra={
-                "doc_type": document.type.value,
-                "deadline_days": deadline_days,
-                "case_id": document.case_id,
-            },
+            extra={"doc_type": document.type.value, "deadline_days": deadline_days, "case_id": document.case_id},
         )
 
         reminders = self._build_reminders(
@@ -231,10 +205,7 @@ Be specific to Indian legal system. Name actual courts, commissions, authorities
             f"Arbiter will send you reminders at key checkpoints."
         )
 
-        logger.info(
-            "tracking_plan_complete",
-            extra={"reminders": len(reminders), "case_id": document.case_id},
-        )
+        logger.info("tracking_plan_complete", extra={"reminders": len(reminders), "case_id": document.case_id})
 
         return TrackingPlan(
             response_deadline_date=deadline_date,

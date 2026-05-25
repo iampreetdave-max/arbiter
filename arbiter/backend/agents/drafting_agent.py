@@ -1,5 +1,5 @@
 """
-drafting_agent.py — Legal document drafting agent powered by Gemini.
+drafting_agent.py — Legal document drafting agent powered by Google Gemini 2.0 Pro.
 
 Takes IntakeData + ResearchData and generates a complete, cited legal document.
 
@@ -13,6 +13,10 @@ KEY UPGRADES:
 CRITICAL RULE: Every legal claim in the document must cite a specific act and section.
 No citation = no claim. This is enforced by the agent's system prompt and verified post-generation.
 """
+# ─────────────────────────────────────────────────────────────────────────────
+# Arbiter ⚖️  ·  Powered by Google Gemini 2.0 Pro  ·  XPRIZE Build with Gemini
+# Model: gemini-2.0-pro-exp  ·  Framework: Google Agent Development Kit (ADK)
+# ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import logging
@@ -145,23 +149,17 @@ Return the complete revised document text only — no explanation, no preamble."
 
 
 class DraftingAgent:
-    """
-    Generates complete, cited legal documents from intake and research data.
-
-    Supports streaming, revision, and Hindi language output.
-    """
+    """Generates complete, cited legal documents from intake and research data."""
 
     def __init__(self) -> None:
         self._gemini = GeminiService(system_instruction=DRAFTING_SYSTEM_PROMPT)
 
     def _build_facts_text(self, intake: IntakeData) -> str:
-        """Format key facts as numbered list."""
         if intake.key_facts:
             return "\n".join(f"{i+1}. {fact}" for i, fact in enumerate(intake.key_facts))
         return f"The complainant has a dispute with {intake.respondent.name} regarding {intake.desired_outcome}."
 
     def _build_laws_text(self, research: ResearchData) -> str:
-        """Format applicable laws and sections, noting they are grounded/verified."""
         lines = []
         if research.grounding_sources:
             lines.append(f"[Verified via {len(research.grounding_sources)} real legal sources]")
@@ -176,13 +174,11 @@ class DraftingAgent:
         return "\n".join(lines) if lines else "Indian Contract Act, 1872"
 
     def _language_instruction(self, lang: str) -> str:
-        """Return language-specific drafting instruction."""
         if lang == "hi":
             return "IMPORTANT: Write the entire document in Hindi (Devanagari script). Keep act names, section numbers, and the disclaimer in English."
         return ""
 
     def _extract_citations(self, document_text: str) -> list[Citation]:
-        """Parse citations from document text. Looks for [Act Name, Section X] patterns."""
         citations = []
         pattern = r"\[([^\]]+),\s*Section\s+([^\]]+)\]"
         matches = re.findall(pattern, document_text)
@@ -195,7 +191,7 @@ class DraftingAgent:
                     act=act.strip(),
                     section=f"Section {section.strip()}",
                     description="Applicable provision cited in this document.",
-                    verified=False,  # Will be updated if grounding sources exist
+                    verified=False,
                 ))
         return citations
 
@@ -204,25 +200,19 @@ class DraftingAgent:
         citations: list[Citation],
         grounding_sources: list,
     ) -> tuple[list[Citation], int]:
-        """
-        Mark citations as verified if their act names appear in grounding source titles.
-        Returns (updated_citations, verified_count).
-        """
         source_titles = " ".join(
             s.title.lower() if hasattr(s, "title") else s.get("title", "").lower()
             for s in grounding_sources
         )
         verified_count = 0
         for citation in citations:
-            # Check if the act name appears in any grounding source title
-            act_words = citation.act.lower().split()[:3]  # First 3 words of act name
+            act_words = citation.act.lower().split()[:3]
             if any(word in source_titles for word in act_words):
                 citation.verified = True
                 verified_count += 1
         return citations, verified_count
 
     def _get_document_title(self, doc_type: DocumentType, intake: IntakeData) -> str:
-        """Generate a document title."""
         titles = {
             DocumentType.DEMAND_LETTER: f"Legal Demand Notice — {intake.desired_outcome}",
             DocumentType.RTI_APPLICATION: f"RTI Application — {intake.respondent.name}",
@@ -234,7 +224,6 @@ class DraftingAgent:
         return titles.get(doc_type, f"Legal Document — {intake.respondent.name}")
 
     def _select_prompt(self, doc_type: DocumentType, intake: IntakeData, research: ResearchData) -> str:
-        """Select and fill the appropriate prompt template."""
         today = datetime.now().strftime("%d %B %Y")
         lang = getattr(intake, "language", "en")
         lang_instruction = self._language_instruction(lang)
@@ -268,17 +257,7 @@ class DraftingAgent:
         case_id: str = "",
         content_override: Optional[str] = None,
     ) -> LegalDocument:
-        """
-        Generate a complete legal document (non-streaming).
-
-        Propagates confidence score and grounding sources from research.
-        Marks citations as verified if they appear in grounding sources.
-
-        Args:
-            content_override: When provided (e.g. after SSE streaming), skip Gemini
-                              generation and use this pre-generated content directly.
-                              All citation extraction and confidence scoring still runs.
-        """
+        """Generate a complete legal document (non-streaming)."""
         if document_type is None:
             try:
                 document_type = DocumentType(research.recommended_document_type)
@@ -288,27 +267,20 @@ class DraftingAgent:
         title = self._get_document_title(document_type, intake)
 
         if content_override:
-            # Use the streamed content directly — no need to call Gemini again
-            logger.info(
-                "drafting_from_stream",
-                extra={"doc_type": document_type.value, "case_id": case_id, "chars": len(content_override)},
-            )
+            logger.info("drafting_from_stream", extra={"doc_type": document_type.value, "case_id": case_id})
             content = content_override
         else:
             prompt = self._select_prompt(document_type, intake, research)
             logger.info("drafting_started", extra={"doc_type": document_type.value, "case_id": case_id})
             content = await self._gemini.generate(prompt)
+
         citations = self._extract_citations(content)
 
-        # Mark citations as verified using grounding sources from research
         if research.grounding_sources:
-            citations, verified_count = self._mark_verified_citations(
-                citations, research.grounding_sources
-            )
+            citations, verified_count = self._mark_verified_citations(citations, research.grounding_sources)
         else:
             verified_count = 0
 
-        # If no citations found, add a generic one based on research
         if not citations and research.relevant_sections:
             first_section = research.relevant_sections[0]
             parts = first_section.split("—")
@@ -323,9 +295,6 @@ class DraftingAgent:
 
         word_count = len(content.split())
         lang = getattr(intake, "language", "en")
-
-        # Propagate confidence from research (document confidence = research confidence
-        # adjusted for citation verification)
         doc_confidence = research.confidence_score
         if citations and verified_count > 0:
             doc_confidence = min(doc_confidence + (verified_count / len(citations)) * 10, 100.0)
@@ -337,13 +306,7 @@ class DraftingAgent:
 
         logger.info(
             "drafting_complete",
-            extra={
-                "doc_type": document_type.value,
-                "word_count": word_count,
-                "citations": len(citations),
-                "verified": verified_count,
-                "confidence": doc_confidence,
-            },
+            extra={"doc_type": document_type.value, "word_count": word_count, "citations": len(citations), "verified": verified_count},
         )
 
         return LegalDocument(
@@ -369,19 +332,7 @@ class DraftingAgent:
         user_id: str = "",
         case_id: str = "",
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream document generation — yields text chunks progressively.
-
-        The caller is responsible for collecting all chunks and assembling
-        the final document for storage. Confidence and grounding are computed
-        after generation by the caller using the draft() method.
-
-        Usage:
-            full_text = ""
-            async for chunk in agent.stream_draft(intake, research):
-                full_text += chunk
-                yield chunk  # stream to frontend via SSE
-        """
+        """Stream document generation — yields text chunks progressively."""
         if document_type is None:
             try:
                 document_type = DocumentType(research.recommended_document_type)
@@ -389,11 +340,7 @@ class DraftingAgent:
                 document_type = DocumentType.DEMAND_LETTER
 
         prompt = self._select_prompt(document_type, intake, research)
-
-        logger.info(
-            "stream_drafting_started",
-            extra={"doc_type": document_type.value, "case_id": case_id},
-        )
+        logger.info("stream_drafting_started", extra={"doc_type": document_type.value, "case_id": case_id})
 
         async for chunk in self._gemini.stream_generate(prompt):
             yield chunk
@@ -404,22 +351,11 @@ class DraftingAgent:
         instructions: str,
         revision_count: int = 0,
     ) -> str:
-        """
-        Revise an existing document based on user instructions.
-
-        Args:
-            original_content: The current document text.
-            instructions: Natural language revision instructions from the user.
-            revision_count: Current revision count (for logging).
-
-        Returns:
-            Revised document text.
-        """
+        """Revise an existing document based on user instructions."""
         prompt = REVISION_PROMPT.format(
             original_content=original_content,
             instructions=instructions,
         )
-
         logger.info("revision_started", extra={"revision_num": revision_count + 1})
         revised = await self._gemini.generate(prompt)
         logger.info("revision_complete", extra={"words": len(revised.split())})
