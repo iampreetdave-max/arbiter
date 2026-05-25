@@ -1,7 +1,8 @@
+// Arbiter | Powered by Google Gemini 2.0 Pro | XPRIZE Build with Gemini
 /**
  * Protected app shell layout.
  * AuthGuard ensures only authenticated users can access these pages.
- * Now includes nav links for legal updates, public cases, and lawyer pages.
+ * Session 8: Added nav links for legal updates, public cases, and lawyer pages.
  */
 import { AuthGuard } from '@/components/auth/AuthGuard'
 
@@ -24,7 +25,7 @@ function AppTopBar() {
           href="/"
           className="text-white font-bold text-lg tracking-tight hover:opacity-80 transition-opacity flex-shrink-0"
         >
-          Arbiter ⚖️
+          Arbiter
         </a>
 
         {/* Nav links */}

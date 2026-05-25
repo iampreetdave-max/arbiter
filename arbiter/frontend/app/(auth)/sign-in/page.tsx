@@ -50,7 +50,6 @@ export default function SignInPage() {
       <h1 className="text-xl font-bold text-white mb-1">Sign in</h1>
       <p className="text-[#555] text-sm mb-6">Continue to Arbiter</p>
 
-      {/* Google OAuth */}
       <button
         type="button"
         onClick={handleGoogle}
@@ -79,26 +78,14 @@ export default function SignInPage() {
         </div>
       </div>
 
-      {/* Email/password form */}
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-        <Input
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          autoComplete="email"
-          required
-        />
-        <Input
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          autoComplete="current-password"
-          required
-        />
+        <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" autoComplete="email" required />
+        <Input label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
+        <div className="flex justify-end -mt-2">
+          <Link href="/forgot-password" className="text-xs text-[#555] hover:text-white transition-colors">
+            Forgot password?
+          </Link>
+        </div>
 
         {error && (
           <p className="text-sm text-red-400 bg-red-900/10 border border-red-900/20 rounded-lg px-3 py-2" role="alert">
