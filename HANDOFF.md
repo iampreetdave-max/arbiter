@@ -5,15 +5,15 @@
 
 ## 🕐 Last Updated
 **Date:** 2026-05-25
-**Session:** Session 7 — Major Feature Expansion
+**Session:** Session 9 — Full GitHub Push Complete
 **Updated By:** Claude (autonomous session)
 
 ---
 
 ## 📍 Current Status
-**Phase:** Feature Expansion — Session 7 Complete ✅
-**Sprint:** 6 DONE — Multi-country, lawyers, updates, jailbreak hardening, CI/CD
-**Overall Progress:** 97% — Full stack, multi-country, lawyer marketplace, content feeds, full CI/CD
+**Phase:** Feature Expansion — Session 8 Complete, All Files Pushed ✅
+**Sprint:** 7+8 DONE — All 51 files pushed to GitHub main branch
+**Overall Progress:** 98% — Full auth flows, Gemini attribution throughout, case history with tabs, all code on GitHub
 
 ---
 
@@ -83,12 +83,66 @@ All previous sessions complete. Full stack built, production-readiness added, 16
 
 ---
 
+## ✅ Session 8 — Completed
+
+### Gemini Branding (across entire codebase)
+- [x] All 4 agent files: Gemini banner header + docstring updated to "Google Gemini 2.0 Pro"
+- [x] All 6 service/API files: gemini_service.py, chat.py, prompt_enhancer.py, legal_update_service.py, case_showcase_service.py, lawyer_matching_service.py
+- [x] `GEMINI.md` — complete map of every Gemini API call for judges
+- [x] `README.md` — Gemini/ADK/XPRIZE badges at top + AI Stack table
+- [x] `frontend/app/(app)/layout.tsx` + `frontend/lib/api.ts` — Gemini attribution comment
+- [x] `.gitmessage` — commit template with Gemini footer
+- [x] `git config user.name` → `"Preet × Google Gemini 2.0"`
+- [x] `git config commit.template` → `.gitmessage`
+
+### Case History Enhancement
+- [x] `arbiter/frontend/app/(app)/cases/page.tsx` — search, status filter pills, country dropdown, sort, "N total · M shown" count
+- [x] `arbiter/frontend/app/(app)/cases/[id]/page.tsx` — 3-tab view (Overview / Conversation / Timeline), escalate-to-lawyer button, country flag in header
+
+### Complete Auth Flows
+- [x] `arbiter/frontend/app/(auth)/forgot-password/page.tsx` — email → reset email → Gmail/Outlook links
+- [x] `arbiter/frontend/app/(auth)/reset-password/page.tsx` — oobCode verification → new password → success
+- [x] `arbiter/frontend/app/(app)/account/page.tsx` — display name, email verification badge, change password
+- [x] `sign-in/page.tsx` — "Forgot password?" link added
+- [x] `sign-up/page.tsx` — display name field + send email verification after signup
+- [x] `AuthContext.tsx` — updateDisplayName, updateUserPassword, sendVerification methods
+- [x] `UserMenuClient.tsx` — nav links in dropdown, Account Settings entry, display name, verified badge
+
+## ✅ Session 9 — All Files Pushed to GitHub
+
+All 51 files from Sessions 7+8 have been pushed to `iampreetdave-max/arbiter` main branch.
+
+Push commits:
+- `8bac155` — backend API + core + env files (Batch 1a)
+- `1713a46` — models, sanitize, prompt_enhancer, lawyer_matching (Batch 1b)
+- `5265050` — legal_update_service, case_showcase_service, main.py (Batch 1c)
+- `bcee6a1` — AuthContext, layout, UserMenuClient, sign-in/up, forgot-password, cases list (Batch 2a)
+- `5451d13` — cases/[id], lawyer pages, legal-updates, public-cases, PublicCaseCard, api.ts (Batch 2b)
+- `a60a331` — chat.py rewrite, lawyers.py, countries.py, gemini_service.py (Batch 3a)
+- `2676837` — all 4 agents (intake, research, drafting, tracking) (Batch 3b)
+- `19a95d6` — LawyerCard, SpecialtySelector, CountrySelector, LegalUpdateCard, account, reset-password (Batch 4a)
+- `dd616de` — CI/CD workflows, ENVIRONMENTS.md, frontend .env.example (Batch 4b)
+- `59dac54` — GEMINI.md, README, .gitmessage (Batch 4c)
+- This commit — HANDOFF.md (final)
+
 ## 🔨 Currently In Progress
-- Nothing — clean state. All files written locally.
+- Nothing — clean state. GitHub is fully up to date.
 
 ---
 
-## 📋 Next Steps — DEPLOY + GET CUSTOMERS
+## 📋 Next Steps
+
+### HIGH PRIORITY — Admin Dashboard (not started)
+The user requested: "dashboards to monitor all the api usages, custom api calls for all modules that usage and traffic and a way to manage my users like the lawyers who applied as consultants"
+
+Needs:
+- `arbiter/frontend/app/(app)/admin/page.tsx` — API usage charts, traffic per module
+- `arbiter/frontend/app/(app)/admin/lawyers/page.tsx` — approve/reject lawyer applications
+- `arbiter/frontend/app/(app)/admin/users/page.tsx` — all users, case counts, revenue
+- Backend already has: `GET /api/admin/metrics`, `GET /api/admin/health/full`, `GET /api/admin/security-events`
+- Need to add: `GET /api/admin/lawyers` (all lawyers with status), `PUT /api/lawyers/{id}/verify` (approve/reject)
+
+### DEPLOY + GET CUSTOMERS
 
 ### Immediate (user must do):
 1. **Set up 2 Firebase projects** — `arbiter-dev` (development) + `arbiter-prod` (production)
@@ -200,51 +254,6 @@ Push v*.*.* tag → deploy-production.yml → manual approval → production Clo
 - **GitHub:** https://github.com/iampreetdave-max/arbiter
 - **Devpost:** https://xprize.devpost.com/
 - **Live URL:** NOT YET DEPLOYED
-
----
-
-## 📁 Session 7 — Files Created/Modified
-
-### New files (28):
-```
-arbiter/backend/core/countries.py
-arbiter/backend/core/prompt_enhancer.py
-arbiter/backend/models/lawyer.py
-arbiter/backend/services/lawyer_matching_service.py
-arbiter/backend/services/legal_update_service.py
-arbiter/backend/services/case_showcase_service.py
-arbiter/backend/api/lawyers.py
-arbiter/backend/api/legal_updates.py
-arbiter/backend/api/public_cases.py
-arbiter/backend/api/content_refresh.py
-arbiter/backend/.env.example (rewrite)
-arbiter/backend/.env.test (new)
-arbiter/frontend/components/onboarding/CountrySelector.tsx
-arbiter/frontend/components/lawyer/LawyerCard.tsx
-arbiter/frontend/components/lawyer/SpecialtySelector.tsx
-arbiter/frontend/components/updates/LegalUpdateCard.tsx
-arbiter/frontend/components/cases/PublicCaseCard.tsx
-arbiter/frontend/app/(app)/legal-updates/page.tsx
-arbiter/frontend/app/(app)/public-cases/page.tsx
-arbiter/frontend/app/(app)/lawyer/register/page.tsx
-arbiter/frontend/app/(app)/lawyer/dashboard/page.tsx
-arbiter/frontend/.env.example
-.github/workflows/ci.yml (rewrite)
-.github/workflows/deploy-staging.yml
-.github/workflows/deploy-production.yml
-docs/ENVIRONMENTS.md
-```
-
-### Modified files (6):
-```
-arbiter/backend/api/chat.py       — full rewrite (country-aware + jailbreak-resistant + never-assume)
-arbiter/backend/models/case.py    — country_code, currency fields added
-arbiter/backend/main.py           — v2.0, 5 new routers, /health/countries
-arbiter/backend/core/config.py    — 4 new settings + is_staging
-arbiter/frontend/app/(app)/layout.tsx — nav bar with new links
-arbiter/frontend/lib/api.ts       — lawyers + legal updates + public cases APIs
-arbiter/backend/core/sanitize.py  — 13 new jailbreak patterns
-```
 
 ---
 
