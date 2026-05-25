@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
+import { Providers } from './providers'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -61,7 +62,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="bg-black text-white antialiased min-h-screen">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   )
