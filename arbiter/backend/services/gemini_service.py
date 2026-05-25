@@ -1,14 +1,18 @@
 """
-gemini_service.py — Wrapper around the Google Gemini API.
+gemini_service.py — Google Gemini 2.0 Pro API wrapper for Arbiter.
 
 All Gemini calls in the app go through this service.
 Provides:
   - Standard generation (generate)
   - Structured JSON generation (generate_structured)
-  - Google Search grounded generation (generate_with_grounding) ← NEW
-  - Streaming generation (stream_generate) ← NEW
+  - Google Search grounded generation (generate_with_grounding)
+  - Streaming generation (stream_generate)
   - Multi-turn chat with history
 """
+# ─────────────────────────────────────────────────────────────────────────────
+# Arbiter ⚖️  ·  Powered by Google Gemini 2.0 Pro  ·  XPRIZE Build with Gemini
+# Model: gemini-2.0-pro-exp  ·  Framework: Google Agent Development Kit (ADK)
+# ─────────────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import asyncio
@@ -27,10 +31,8 @@ from core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# Configure Gemini once at module load
 genai.configure(api_key=settings.gemini_api_key)
 
-# Safety settings — relaxed for legal content (laws mention crimes, harassment, etc.)
 SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
@@ -39,7 +41,7 @@ SAFETY_SETTINGS = {
 }
 
 GENERATION_CONFIG = genai.GenerationConfig(
-    temperature=0.2,       # Low temp = consistent, factual legal output
+    temperature=0.2,
     top_p=0.95,
     top_k=40,
     max_output_tokens=8192,
@@ -50,16 +52,13 @@ class GeminiService:
     """
     Async wrapper around Google Gemini API.
 
-    New capabilities:
-      - generate_with_grounding(): Uses Google Search to verify real Indian laws
-      - stream_generate(): Yields text chunks progressively (for live document generation)
-      - stream_chat(): Streams multi-turn chat responses
-
-    Usage:
-        gemini = GeminiService()
-        text, sources = await gemini.generate_with_grounding("Research IPC Section 420 India")
-        async for chunk in gemini.stream_generate("Draft demand letter for..."):
-            print(chunk, end="")
+    Capabilities:
+      - generate(): Standard text generation
+      - generate_with_grounding(): Google Search grounded generation
+      - stream_generate(): Streaming text generation
+      - stream_chat(): Streaming multi-turn chat
+      - generate_structured(): JSON generation with key validation
+      - chat(): Multi-turn conversation
     """
 
     def __init__(self, system_instruction: Optional[str] = None) -> None:
@@ -83,8 +82,6 @@ class GeminiService:
             "You communicate clearly in plain English and, when asked, in Hindi."
         )
 
-    # ── Standard generation ─────────────────────────────────────────────────────────────────────────────
-
     async def generate(
         self,
         prompt: str,
@@ -106,7 +103,6 @@ class GeminiService:
                 text = response.text
                 logger.info("gemini_generate_ok", extra={"chars": len(text), "attempt": attempt})
 
-                # ── Cost tracking (non-blocking) ──────────────────────────────────────────────────
                 try:
                     usage = getattr(response, "usage_metadata", None)
                     tokens_in = getattr(usage, "prompt_token_count", 0) or 0
@@ -120,7 +116,7 @@ class GeminiService:
                         grounded=False,
                     )
                 except Exception:
-                    pass  # Never block generation on monitoring failure
+                    pass
 
                 return text
 
@@ -142,29 +138,20 @@ class GeminiService:
 
         raise RuntimeError("Gemini generation failed after all retries.")
 
-    # ── Google Search Grounding ───────────────────────────────────────────────────────────────────────────
-
     async def generate_with_grounding(
         self,
         prompt: str,
         max_retries: int = 3,
     ) -> tuple[str, list[dict]]:
         """
-        Generate with Google Search grounding — verifies legal claims against real web sources.
+        Generate with Google Search grounding.
 
         Returns:
             tuple of (generated_text, grounding_sources)
             where grounding_sources = [{"title": str, "url": str}, ...]
-
-        Uses Gemini's built-in Google Search tool to ground responses in real Indian law
-        databases, court websites, and government publications.
-        Falls back to regular generation if grounding is unavailable.
         """
         for attempt in range(1, max_retries + 1):
             try:
-                # Create a model instance with Google Search grounding enabled
-                # The "google_search_retrieval" tool makes Gemini search the web
-                # before generating, grounding its output in real sources
                 grounded_model = GenerativeModel(
                     model_name=self._model_name,
                     system_instruction=self._system_instruction,
@@ -180,7 +167,6 @@ class GeminiService:
 
                 text = response.text
 
-                # Extract grounding sources from response metadata
                 sources: list[dict] = []
                 try:
                     candidate = response.candidates[0]
@@ -194,14 +180,13 @@ class GeminiService:
                                 if url:
                                     sources.append({"title": title, "url": url})
                 except Exception:
-                    pass  # Metadata extraction failure is non-fatal
+                    pass
 
                 logger.info(
                     "gemini_grounded_ok",
                     extra={"sources": len(sources), "chars": len(text), "attempt": attempt},
                 )
 
-                # ── Cost tracking (non-blocking) ──────────────────────────────────────────────────
                 try:
                     usage = getattr(response, "usage_metadata", None)
                     tokens_in = getattr(usage, "prompt_token_count", 0) or 0
@@ -215,7 +200,7 @@ class GeminiService:
                         grounded=True,
                     )
                 except Exception:
-                    pass  # Never block generation on monitoring failure
+                    pass
 
                 return text, sources
 
@@ -229,31 +214,20 @@ class GeminiService:
                     "grounding_unavailable",
                     extra={"error": str(exc), "attempt": attempt},
                 )
-                break  # Fall through to non-grounded
+                break
 
-        # ── Fallback: regular generation ────────────────────────────────────────────────────────────────
         logger.info("grounding_fallback")
         text = await self.generate(prompt)
         return text, []
 
-    # ── Streaming generation ─────────────────────────────────────────────────────────────────────────────
-
     async def stream_generate(self, prompt: str) -> AsyncGenerator[str, None]:
         """
         Stream text generation — yields chunks as Gemini produces them.
-
-        Ideal for live document generation where the user sees text appearing
-        word-by-word instead of waiting for the full response.
-
-        Usage:
-            async for chunk in gemini.stream_generate("Draft demand letter..."):
-                await websocket.send(chunk)
         """
         chunk_queue: stdlib_queue.Queue = stdlib_queue.Queue()
         loop = asyncio.get_event_loop()
 
         def _produce() -> None:
-            """Background thread: streams from Gemini and puts chunks into queue."""
             try:
                 response = self._model.generate_content(prompt, stream=True)
                 for chunk in response:
@@ -263,13 +237,12 @@ class GeminiService:
             except Exception as exc:
                 chunk_queue.put(exc)
             finally:
-                chunk_queue.put(None)  # Sentinel — signals end of stream
+                chunk_queue.put(None)
 
         thread = threading.Thread(target=_produce, daemon=True)
         thread.start()
 
         while True:
-            # Wait for next chunk without blocking the event loop
             item = await loop.run_in_executor(None, chunk_queue.get)
             if item is None:
                 break
@@ -283,13 +256,7 @@ class GeminiService:
         history: list[dict],
         message: str,
     ) -> AsyncGenerator[str, None]:
-        """
-        Stream a multi-turn chat response.
-
-        Args:
-            history: Chat history as [{"role": "user"|"model", "parts": [str]}]
-            message: Current user message.
-        """
+        """Stream a multi-turn chat response."""
         chunk_queue: stdlib_queue.Queue = stdlib_queue.Queue()
         loop = asyncio.get_event_loop()
 
@@ -317,8 +284,6 @@ class GeminiService:
                 raise RuntimeError(f"Chat streaming failed: {item}")
             yield item
 
-    # ── Structured JSON generation ────────────────────────────────────────────────────────────────────────
-
     async def generate_structured(
         self,
         prompt: str,
@@ -326,18 +291,7 @@ class GeminiService:
         chat_history: Optional[list[dict]] = None,
         use_grounding: bool = False,
     ) -> dict:
-        """
-        Generate a response and parse it as JSON.
-
-        Args:
-            prompt: The instruction prompt.
-            expected_keys: Keys that must be present in the response JSON.
-            chat_history: Prior conversation context.
-            use_grounding: If True, use Google Search grounding (better accuracy).
-
-        Returns:
-            Parsed dict. Falls back to {"raw": text} if JSON parsing fails.
-        """
+        """Generate a response and parse it as JSON."""
         import json
         import re
 
@@ -352,7 +306,6 @@ class GeminiService:
         else:
             text = await self.generate(json_prompt, chat_history=chat_history)
 
-        # Strip markdown code fences if present
         text = re.sub(r"```(?:json)?\s*|\s*```", "", text).strip()
 
         try:
@@ -361,8 +314,6 @@ class GeminiService:
         except json.JSONDecodeError:
             logger.warning("gemini_json_parse_failed", extra={"raw": text[:200]})
             return {"raw": text}
-
-    # ── Multi-turn chat ────────────────────────────────────────────────────────────────────────────────
 
     async def chat(
         self,
@@ -375,15 +326,10 @@ class GeminiService:
         Args:
             conversation: List of {"role": "user"|"model", "parts": [str]} dicts.
                           The LAST item is the current user message.
-                          All prior items are the history.
-
-        Returns:
-            Model's text response.
         """
         if not conversation:
             raise ValueError("Conversation cannot be empty.")
 
-        # Split into history and current message
         history = conversation[:-1]
         current = conversation[-1]
 
@@ -415,8 +361,6 @@ class GeminiService:
 
         raise RuntimeError("Chat failed after all retries.")
 
-
-# ── Module-level singleton ───────────────────────────────────────────────────────────────────────────
 
 _gemini_service: Optional[GeminiService] = None
 

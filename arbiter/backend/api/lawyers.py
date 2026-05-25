@@ -34,7 +34,7 @@ from services.lawyer_matching_service import get_lawyer_matching_service
 router = APIRouter(prefix="/api/lawyers", tags=["lawyers"])
 logger = structlog.get_logger()
 
-# ── Private (lawyer's own profile) ──────────────────────────────────────────────
+# ── Private (lawyer's own profile) ─────────────────────────────────────────────
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_lawyer(
@@ -50,7 +50,6 @@ async def register_lawyer(
     firebase = get_firebase_service()
     user_id = current_user["uid"]
 
-    # Check if already registered
     existing = firebase.db.collection("lawyers").where("user_id", "==", user_id).limit(1).stream()
     if any(True for _ in existing):
         raise HTTPException(
@@ -166,15 +165,10 @@ async def get_my_matched_cases(
     limit: int = Query(default=20, le=50),
     current_user: dict = Depends(get_current_user),
 ) -> dict:
-    """
-    Get cases matched to this lawyer (lawyer dashboard feed).
-
-    Returns cases that match the lawyer's specialty and jurisdiction.
-    """
+    """Get cases matched to this lawyer (lawyer dashboard feed)."""
     firebase = get_firebase_service()
     matching_svc = get_lawyer_matching_service()
 
-    # Get lawyer profile
     docs = list(
         firebase.db.collection("lawyers")
         .where("user_id", "==", current_user["uid"])
@@ -295,7 +289,6 @@ async def escalate_case_to_lawyer(
         match_score=best_lawyer["match_score"],
     )
 
-    # Mark case as escalated
     firebase.update_case(case_id, {"status": "escalated", "escalated_to_lawyer_id": best_lawyer["id"]})
 
     lawyer_response = LawyerResponse(
@@ -329,7 +322,7 @@ async def escalate_case_to_lawyer(
     )
 
 
-# ── Public lawyer directory ───────────────────────────────────────────────────────
+# ── Public lawyer directory ────────────────────────────────────────────────────────
 
 @router.get("")
 async def list_lawyers(
@@ -351,7 +344,6 @@ async def list_lawyers(
     lawyers = []
     for doc in docs:
         d = doc.to_dict()
-        # Filter by specialty in Python (Firestore doesn't support array-contains with other filters cleanly)
         if specialty and specialty not in d.get("specialties", []):
             continue
         lawyers.append({
@@ -383,7 +375,6 @@ async def get_lawyer(lawyer_id: str) -> dict:
     if d.get("status") != "verified":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lawyer not found.")
     d["id"] = doc.id
-    # Remove sensitive fields
     d.pop("user_id", None)
     d.pop("contact_email", None)
     d.pop("contact_phone", None)

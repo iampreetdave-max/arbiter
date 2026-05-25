@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# ── Supported country definitions ─────────────────────────────────────────────
-
+# ── Supported country definitions ──────────────────────────────────────────────────
 SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
     "IN": {
         "name": "India",
@@ -60,7 +59,7 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
         "limitation_periods": {
             "consumer_complaint_days": 730,
             "civil_suit_days": 1095,
-            "criminal_complaint_days": None,  # varies
+            "criminal_complaint_days": None,
             "rti_first_appeal_days": 30,
         },
         "compliance_notes": [
@@ -121,10 +120,10 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
             "antitrust": "FTC / Department of Justice Antitrust Division",
         },
         "limitation_periods": {
-            "civil_complaint_days": 1095,  # 3 years (varies significantly by state & claim type)
-            "employment_eeoc_days": 180,   # 300 days in states with their own agencies
+            "civil_complaint_days": 1095,
+            "employment_eeoc_days": 180,
             "federal_tort_days": 730,
-            "small_claims_days": 730,      # typically 2 years
+            "small_claims_days": 730,
         },
         "compliance_notes": [
             "State laws vary significantly — always specify the state",
@@ -150,7 +149,7 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
         "currency": "GBP",
         "currency_symbol": "£",
         "primary_language": "en",
-        "secondary_languages": ["cy"],  # Welsh
+        "secondary_languages": ["cy"],
         "key_statutes": [
             "Consumer Rights Act 2015",
             "Employment Rights Act 1996",
@@ -185,8 +184,8 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
             "energy": "Energy Ombudsman",
         },
         "limitation_periods": {
-            "civil_claim_days": 1825,    # 5 years in England (6 years Scotland)
-            "employment_tribunal_days": 91,  # 3 months minus 1 day
+            "civil_claim_days": 1825,
+            "employment_tribunal_days": 91,
             "personal_injury_days": 1095,
             "small_claims_days": 1825,
         },
@@ -246,8 +245,8 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
             "spam": "Canadian Anti-Spam Legislation (CASL) enforcement by CRTC",
         },
         "limitation_periods": {
-            "civil_claim_days": 730,    # 2 years (most provinces)
-            "employment_complaint_days": 365,  # varies by province
+            "civil_claim_days": 730,
+            "employment_complaint_days": 365,
             "human_rights_complaint_days": 365,
         },
         "compliance_notes": [
@@ -305,8 +304,8 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
             "financial": "Australian Financial Complaints Authority (AFCA)",
         },
         "limitation_periods": {
-            "civil_claim_days": 1825,    # 5 years (varies by state: 3–6 years)
-            "employment_unfair_dismissal_days": 21,   # 21 days from dismissal
+            "civil_claim_days": 1825,
+            "employment_unfair_dismissal_days": 21,
             "consumer_complaint_days": 1095,
         },
         "compliance_notes": [
@@ -329,7 +328,7 @@ SUPPORTED_COUNTRIES: dict[str, dict[str, Any]] = {
 
 DEFAULT_COUNTRY = "IN"
 
-# ── Helper functions ────────────────────────────────────────────────────
+# ── Helper functions ─────────────────────────────────────────────────────────────
 
 def get_country(code: str) -> dict[str, Any] | None:
     """Return country data by ISO code. Returns None if not supported."""
