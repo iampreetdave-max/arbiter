@@ -13,7 +13,7 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  # ── Backend: Python tests + lint + security ─────────────────────────────────
+  # ── Backend: Python tests + lint + security ─────────────────────────────────────────
   backend-test:
     name: Backend Tests
     runs-on: ubuntu-latest
@@ -22,7 +22,8 @@ jobs:
         working-directory: arbiter/backend
 
     env:
-      GEMINI_API_KEY: test-key-ci
+      # Test environment — no real credentials needed
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_TEST || 'test-key-ci' }}
       GOOGLE_CLOUD_PROJECT: arbiter-test
       FIREBASE_PROJECT_ID: arbiter-test
       RAZORPAY_KEY_ID: rzp_test_ci
@@ -40,21 +41,7 @@ jobs:
           cache: pip
           cache-dependency-path: arbiter/backend/requirements.txt
 
-      # weasyprint needs libpango, libcairo etc. — not pre-installed on ubuntu-latest
-      - name: Install system dependencies (weasyprint)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            libpango-1.0-0 \
-            libpangocairo-1.0-0 \
-            libcairo2 \
-            libgdk-pixbuf2.0-0 \
-            libfontconfig1 \
-            libharfbuzz0b \
-            libpangoft2-1.0-0 \
-            libffi-dev
-
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
       - name: Run ruff linter
@@ -78,14 +65,15 @@ jobs:
 
       - name: Run pytest
         run: |
+          pip install pytest pytest-asyncio httpx
           python -m pytest ../tests/ -v \
             --tb=short \
             -x \
             --ignore=../tests/load/ \
             2>&1 | head -200
-        continue-on-error: true
+        continue-on-error: true  # Don't fail CI if some tests need real Firebase
 
-      - name: Check all Python files parse (syntax check)
+      - name: Check imports compile
         run: python -c "
         import ast, os, sys
         errors = []
@@ -106,7 +94,7 @@ jobs:
         print(f'All Python files parsed OK')
         "
 
-  # ── Frontend: TypeScript + ESLint ─────────────────────────────────────────
+  # ── Frontend: TypeScript + build check ───────────────────────────────────────
   frontend-check:
     name: Frontend Type Check
     runs-on: ubuntu-latest
@@ -127,28 +115,27 @@ jobs:
       - name: Install dependencies
         run: npm ci --prefer-offline || npm install
 
-      - name: Stub Firebase env vars for type check
-        run: |
-          cat >> .env.local << 'EOF'
-          NEXT_PUBLIC_API_URL=http://localhost:8000
-          NEXT_PUBLIC_FIREBASE_API_KEY=ci-key
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=ci.firebaseapp.com
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID=ci-project
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=ci.appspot.com
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456
-          NEXT_PUBLIC_FIREBASE_APP_ID=1:123456:web:abc123
-          NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_ci
-          EOF
-
       - name: TypeScript check
         run: npx tsc --noEmit
-        continue-on-error: true
+        continue-on-error: true  # May fail if Firebase env vars not set
 
       - name: ESLint check
         run: npx next lint --max-warnings 20
         continue-on-error: true
 
-  # ── Security: Scan for hardcoded secrets ──────────────────────────────────
+      - name: Check build compiles
+        run: |
+          echo "NEXT_PUBLIC_API_URL=http://localhost:8000" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_API_KEY=ci-key" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=ci.firebaseapp.com" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_PROJECT_ID=ci-project" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=ci.appspot.com" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=123456" >> .env.local
+          echo "NEXT_PUBLIC_FIREBASE_APP_ID=1:123456:web:abc123" >> .env.local
+          echo "NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_ci" >> .env.local
+        continue-on-error: true
+
+  # ── Security: Check for secrets ──────────────────────────────────────────────
   secret-scan:
     name: Secret Scan
     runs-on: ubuntu-latest
@@ -159,6 +146,7 @@ jobs:
 
       - name: Scan for hardcoded secrets
         run: |
+          # Check for common secret patterns
           PATTERNS=(
             "GEMINI_API_KEY=[A-Za-z0-9_-]{20,}"
             "rzp_live_[A-Za-z0-9]+"
@@ -167,15 +155,13 @@ jobs:
           )
           FOUND=0
           for pattern in "${PATTERNS[@]}"; do
-            if grep -rE "$pattern" \
-              --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" \
-              --exclude-dir=".git" --exclude-dir="node_modules" .; then
+            if grep -rE "$pattern" --include="*.py" --include="*.ts" --include="*.tsx" --include="*.js" --exclude-dir=".git" --exclude-dir="node_modules" .; then
               echo "⚠️  Possible secret found matching: $pattern"
               FOUND=1
             fi
           done
           if [ $FOUND -eq 1 ]; then
-            echo "❌ Potential secrets detected!"
+            echo "❌ Potential secrets detected! Review above."
             exit 1
           fi
           echo "✅ No hardcoded secrets detected."

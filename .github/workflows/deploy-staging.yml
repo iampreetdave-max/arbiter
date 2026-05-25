@@ -34,7 +34,7 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker asia-south1-docker.pkg.dev
 
-      # ── Backend ──────────────────────────────────────────────────────────
+      # ── Backend ──────────────────────────────────────────────────────────────────
       - name: Build backend Docker image
         run: |
           docker build -t ${{ env.ARTIFACT_REGISTRY }}/backend-staging:${{ github.sha }} \
@@ -69,7 +69,7 @@ jobs:
           URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)')
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      # ── Frontend ─────────────────────────────────────────────────────────
+      # ── Frontend ──────────────────────────────────────────────────────────────────
       - name: Build frontend Docker image
         env:
           NEXT_PUBLIC_API_URL: ${{ steps.backend-url.outputs.url }}

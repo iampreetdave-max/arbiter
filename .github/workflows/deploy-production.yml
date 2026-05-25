@@ -57,7 +57,7 @@ jobs:
         id: version
         run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      # ── Backend ──────────────────────────────────────────────────────────
+      # ── Backend ──────────────────────────────────────────────────────────────────
       - name: Build + push backend (production)
         run: |
           docker build \
@@ -90,7 +90,7 @@ jobs:
           URL=$(gcloud run services describe ${{ env.BACKEND_SERVICE }} --region=${{ env.REGION }} --format='value(status.url)')
           echo "url=$URL" >> $GITHUB_OUTPUT
 
-      # ── Frontend ─────────────────────────────────────────────────────────
+      # ── Frontend ──────────────────────────────────────────────────────────────────
       - name: Build + push frontend (production)
         run: |
           docker build \
