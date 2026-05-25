@@ -21,6 +21,7 @@ class CaseStatus(str, Enum):
     COMPLETE = "complete"       # Document ready for download
     PAID = "paid"               # Payment confirmed
     TRACKING = "tracking"       # Following up on sent documents
+    ESCALATED = "escalated"     # Escalated to a lawyer
     CLOSED = "closed"           # Case closed
 
 
@@ -56,11 +57,16 @@ class Party(BaseModel):
 class IntakeData(BaseModel):
     """Structured data extracted by the IntakeAgent from the user's description."""
     problem_type: ProblemType
-    jurisdiction: str = Field(..., description="Indian state where dispute occurred")
+    country_code: str = Field(
+        default="IN",
+        description="ISO 3166-1 alpha-2 country code (IN, US, GB, CA, AU)"
+    )
+    jurisdiction: str = Field(..., description="State/province/city where dispute occurred")
     complainant: Party
     respondent: Party
     incident_date: Optional[str] = Field(default=None, description="When the problem occurred")
-    amount_involved: Optional[float] = Field(default=None, description="Money at stake in INR")
+    amount_involved: Optional[float] = Field(default=None, description="Money at stake")
+    currency: str = Field(default="INR", description="Currency code (INR, USD, GBP, CAD, AUD)")
     desired_outcome: str = Field(..., description="What the user wants to achieve")
     key_facts: list[str] = Field(default_factory=list, description="Bullet points of key facts")
     evidence_available: list[str] = Field(
@@ -109,7 +115,7 @@ class ResearchData(BaseModel):
         default=None,
         description="e.g. 'District Consumer Commission, Delhi'",
     )
-    # ── Grounding & confidence ──────────────────────────────────────────────────
+    # ── Grounding & confidence ──────────────────────────────────────────────
     confidence_score: float = Field(
         default=0.0,
         description="0–100 confidence based on verified grounding sources",
@@ -127,7 +133,7 @@ class ConversationMessage(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ── API Request/Response Models ───────────────────────────────────────────────
+# ── API Request/Response Models ────────────────────────────────────────────────
 
 class CaseCreate(BaseModel):
     """Request body to start a new case."""
@@ -136,6 +142,10 @@ class CaseCreate(BaseModel):
         min_length=10,
         description="User's description of their legal problem",
         examples=["My landlord is refusing to return my ₹50,000 security deposit after I vacated the flat 2 months ago."]
+    )
+    country_code: Optional[str] = Field(
+        default=None,
+        description="User's country (IN, US, GB, CA, AU). If not provided, AI will ask."
     )
 
 
@@ -160,6 +170,7 @@ class CaseResponse(BaseModel):
     user_id: str
     status: CaseStatus
     problem_type: Optional[ProblemType] = None
+    country_code: Optional[str] = Field(default=None, description="ISO country code")
     jurisdiction: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
